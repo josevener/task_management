@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Task Management - Zentrix Solutions",
-  description: "Enterprise task and project management platform",
+  description: "Task and project management platform",
 };
 
 export default function RootLayout({
