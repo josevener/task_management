@@ -88,7 +88,7 @@ export default function WorkspacesPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Workspaces</h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground">
             Manage your workspaces and navigate between different environments.
           </p>
         </div>
@@ -154,18 +154,21 @@ export default function WorkspacesPage() {
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 cursor-pointer">
                       <span className="sr-only">Workspace settings</span>
                       <Settings className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(workspace)}>
+                    <DropdownMenuItem 
+                      className="cursor-pointer"
+                      onClick={() => openEditDialog(workspace)}
+                    >
                       Edit Workspace
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
-                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                       onClick={() => setDeletingWorkspace(workspace)}
                     >
                       Delete Workspace
@@ -248,12 +251,17 @@ export default function WorkspacesPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={() => setDeletingWorkspace(null)}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="cursor-pointer"
+              onClick={() => setDeletingWorkspace(null)}>
               Cancel
             </Button>
             <Button 
               type="button" 
               variant="destructive" 
+              className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}
             >

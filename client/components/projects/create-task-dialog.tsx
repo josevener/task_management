@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createTask } from "@/lib/api/tasks";
 import { useToast } from "@/lib/toast";
 import { Loader2, CalendarIcon } from "lucide-react";
+import { getProjectEligibleMembers, ProjectMember } from "@/lib/api/members";
+import { useEffect } from "react";
 import type { Task } from "@/lib/types";
 
 interface CreateTaskDialogProps {
@@ -29,7 +31,18 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
     status: "todo",
     priority: "medium",
     due_date: "",
+    assignee_id: "" as string | number,
   });
+
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+
+  useEffect(() => {
+    if (isOpen && projectId) {
+        getProjectEligibleMembers(projectId)
+            .then(res => setMembers(res.members))
+            .catch(console.error);
+    }
+  }, [isOpen, projectId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -56,7 +69,7 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
         status: formData.status,
         priority: formData.priority,
         due_date: formData.due_date || null,
-        // we omit assignee for MVP brevity in the creation step, they can assign in details
+        assignee_id: formData.assignee_id ? Number(formData.assignee_id) : null,
       });
 
       showToast("Task created successfully", "success");
@@ -69,6 +82,7 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
         status: "todo",
         priority: "medium",
         due_date: "",
+        assignee_id: "",
       });
       onClose();
     } catch (error: any) {
@@ -144,6 +158,23 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assignee">Assignee</Label>
+              <Select value={String(formData.assignee_id)} onValueChange={(val) => handleSelectChange('assignee_id', val)}>
+                <SelectTrigger id="assignee">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {members.map(member => (
+                    <SelectItem key={member.id} value={String(member.id)}>
+                      {member.first_name} {member.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

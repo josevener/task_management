@@ -9,7 +9,8 @@ import {
   Settings,
   ChevronDown,
   Plus,
-  Building2
+  Building2,
+  Users
 } from "lucide-react";
 import { useWorkspace } from "@/contexts/workspace-context";
 import {
@@ -32,8 +33,9 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
   const { workspaces, activeWorkspace, switchWorkspace, loading } = useWorkspace();
 
   const navigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Workspaces", href: "/workspaces", icon: Briefcase },
+    ...(activeWorkspace ? [{ name: "Team", href: `/workspaces/${activeWorkspace.id}/members`, icon: Users }] : []),
     { name: "Projects", href: "/projects", icon: FolderKanban },
     { name: "My Tasks", href: "/tasks", icon: CheckSquare },
     { name: "Organizations", href: "/organizations", icon: Building2 },
@@ -52,7 +54,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
           <DropdownMenuTrigger asChild>
             <Button 
               variant="ghost" 
-              className="w-full justify-between h-auto py-2 px-3 hover:bg-slate-800 hover:text-white"
+              className="w-full justify-between h-auto py-2 px-3 hover:bg-slate-800 hover:text-white cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <div 
@@ -63,7 +65,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 </div>
                 <div className="flex flex-col items-start truncate text-left w-32">
                   <span className="text-sm font-semibold truncate w-full text-white">
-                    {loading ? "Loading..." : (activeWorkspace?.name || "Zentrix")}
+                    {loading ? "Loading..." : (activeWorkspace?.name || "No Workspace")}
                   </span>
                   <span className="text-xs text-slate-400 truncate w-full">
                     {activeWorkspace?.organization_name || "Workspaces"}
@@ -80,7 +82,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
               <DropdownMenuItem 
                 key={workspace.id}
                 onClick={() => switchWorkspace(workspace)}
-                className={activeWorkspace?.id === workspace.id ? "bg-slate-100 dark:bg-slate-800" : ""}
+                className={`${activeWorkspace?.id === workspace.id ? "bg-slate-100 dark:bg-slate-800" : "" } cursor-pointer`}
               >
                 <div 
                   className="w-6 h-6 rounded mr-2 flex items-center justify-center text-white font-bold text-[10px]"

@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">
           Welcome back, {user?.first_name || "User"}

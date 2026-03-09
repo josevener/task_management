@@ -93,7 +93,7 @@ export default function NewWorkspacePage() {
   const presetColors = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#db2777"];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/workspaces">
@@ -103,7 +103,7 @@ export default function NewWorkspacePage() {
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Create Workspace</h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground">
             Set up a new workspace for your team or project.
           </p>
         </div>
@@ -180,7 +180,7 @@ export default function NewWorkspacePage() {
                       <button
                         key={color}
                         type="button"
-                        className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 ${
+                        className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 cursor-pointer ${
                           formData.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""
                         }`}
                         style={{ backgroundColor: color }}
@@ -199,7 +199,7 @@ export default function NewWorkspacePage() {
             </Button>
             <Button 
               type="submit" 
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               disabled={isSubmitting || loadingOrgs || organizations.length === 0}
             >
               {isSubmitting ? (

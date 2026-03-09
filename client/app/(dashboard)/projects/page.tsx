@@ -179,11 +179,11 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Projects</h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground">
             Manage projects for <span className="font-semibold">{activeWorkspace.name}</span>
           </p>
         </div>
@@ -196,47 +196,47 @@ export default function ProjectsPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+      <div className="flex flex-col md:flex-row gap-4 bg-slate-50 py-3">
         <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-                placeholder="Search projects..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-white"
-            />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 bg-white"
+          />
         </div>
         <div className="flex gap-4">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] bg-white text-sm">
-                 <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                 <SelectItem value="all">All Status</SelectItem>
-                 <SelectItem value="active">Active</SelectItem>
-                 <SelectItem value="on_hold">On Hold</SelectItem>
-                 <SelectItem value="completed">Completed</SelectItem>
-                 <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] bg-white text-sm">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <Select value={healthFilter} onValueChange={setHealthFilter}>
-              <SelectTrigger className="w-[140px] bg-white text-sm">
-                 <SelectValue placeholder="All Health" />
-              </SelectTrigger>
-              <SelectContent>
-                 <SelectItem value="all">All Health</SelectItem>
-                 <SelectItem value="on_track">On Track</SelectItem>
-                 <SelectItem value="at_risk">At Risk</SelectItem>
-                 <SelectItem value="off_track">Off Track</SelectItem>
-              </SelectContent>
-            </Select>
+          <Select value={healthFilter} onValueChange={setHealthFilter}>
+            <SelectTrigger className="w-[140px] bg-white text-sm">
+              <SelectValue placeholder="All Health" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Health</SelectItem>
+              <SelectItem value="on_track">On Track</SelectItem>
+              <SelectItem value="at_risk">At Risk</SelectItem>
+              <SelectItem value="off_track">Off Track</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {hasActiveFilters && (
-                <Button variant="ghost" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 px-3" title="Clear Filters">
-                    <FilterX className="h-4 w-4" />
-                </Button>
-            )}
+          {hasActiveFilters && (
+            <Button variant="ghost" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 px-3" title="Clear Filters">
+              <FilterX className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -273,77 +273,83 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((project) => (
-             <Card key={project.id} className="flex flex-col hover:shadow-md transition-shadow">
-               {/* Existing Card Content mapped over filteredProjects */}
-               <CardHeader className="pb-3">
-                 <div className="flex justify-between items-start">
-                   <div className="space-y-1">
-                     <CardTitle className="text-lg truncate pr-4" title={project.name}>
-                       <Link href={`/projects/${project.id}`} className="hover:text-blue-600 transition-colors">
-                         {project.name}
-                       </Link>
-                     </CardTitle>
-                     <div className="flex items-center gap-2">
-                       <Badge variant="outline" className={`${getStatusColor(project.status)} capitalize`}>
-                         {project.status.replace('_', ' ')}
-                       </Badge>
-                     </div>
-                   </div>
-                   <DropdownMenu>
-                     <DropdownMenuTrigger asChild>
-                       <Button variant="ghost" className="h-8 w-8 p-0 -mr-2">
-                         <span className="sr-only">Open menu</span>
-                         <MoreHorizontal className="h-4 w-4" />
-                       </Button>
-                     </DropdownMenuTrigger>
-                     <DropdownMenuContent align="end">
-  <DropdownMenuItem asChild>
-    <Link href={`/projects/${project.id}`}>View details</Link>
-  </DropdownMenuItem>
-  <DropdownMenuItem onClick={() => openEditDialog(project)}>
-    Edit project
-  </DropdownMenuItem>
-  <DropdownMenuItem 
-    className="text-red-600 focus:text-red-600" 
-    onClick={() => setDeletingProject(project)}
-  >
-    Delete project
-  </DropdownMenuItem>
-</DropdownMenuContent>
-                   </DropdownMenu>
-                 </div>
-               </CardHeader>
-               <CardContent className="flex-1 pb-4">
-                 <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">
-                   {project.description || "No description provided."}
-                 </p>
-                 
-                 <div className="space-y-4">
-                   <div className="space-y-1.5">
-                     <div className="flex justify-between text-xs font-medium">
-                       <span>Progress</span>
-                       <span>{project.progress_percentage || 0}%</span>
-                     </div>
-                     <Progress value={project.progress_percentage || 0} className="h-2" />
-                   </div>
- 
-                   <div className="flex flex-col gap-2 text-xs text-slate-500">
-                     {project.end_date && (
-                       <div className="flex items-center gap-1.5">
-                         <Calendar className="h-3.5 w-3.5" />
-                         <span>Due {new Date(project.end_date).toLocaleDateString()}</span>
-                       </div>
-                     )}
-                     <div className="flex items-center gap-1.5">
-                       <span className="w-2 h-2 rounded-full inline-block bg-slate-200 relative">
-                         <span className={`absolute inset-0 rounded-full ${getHealthColor(project.health_status)}`}></span>
-                       </span>
-                       <span className="capitalize">{project.health_status.replace('_', ' ')}</span>
-                     </div>
-                   </div>
-                 </div>
-               </CardContent>
-             </Card>
+            <Card key={project.id} className="flex flex-col hover:shadow-md transition-shadow">
+              {/* Existing Card Content mapped over filteredProjects */}
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <CardTitle className="text-lg truncate pr-4" title={project.name}>
+                      <Link href={`/projects/${project.id}`} className="hover:text-blue-600 transition-colors">
+                        {project.name}
+                      </Link>
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={`${getStatusColor(project.status)} capitalize`}>
+                        {project.status.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0 -mr-2 cursor-pointer">
+                        <span className="sr-only">Open menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem 
+                        asChild 
+                        className="cursor-pointer"
+                      >
+                        <Link href={`/projects/${project.id}`}>View details</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="cursor-pointer" 
+                        onClick={() => openEditDialog(project)}
+                      >
+                        Edit project
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-red-600 focus:text-red-600 cursor-pointer" 
+                        onClick={() => setDeletingProject(project)}
+                      >
+                        Delete project
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 pb-4">
+                <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">
+                  {project.description || "No description provided."}
+                </p>
+                
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span>Progress</span>
+                      <span>{project.progress_percentage || 0}%</span>
+                    </div>
+                    <Progress value={project.progress_percentage || 0} className="h-2" />
+                  </div>
+
+                  <div className="flex flex-col gap-2 text-xs text-slate-500">
+                    {project.end_date && (
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>Due {new Date(project.end_date).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full inline-block bg-slate-200 relative">
+                        <span className={`absolute inset-0 rounded-full ${getHealthColor(project.health_status)}`}></span>
+                      </span>
+                      <span className="capitalize">{project.health_status.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
            ))}
         </div>
       )}
@@ -435,10 +441,19 @@ export default function ProjectsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingProject(null)}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="cursor-pointer"
+                onClick={() => setEditingProject(null)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button 
+                type="submit" 
+                disabled={isSubmitting}
+                className="bg-green-600 hover:bg-green-700 cursor-pointer"
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save changes
               </Button>
@@ -457,12 +472,18 @@ export default function ProjectsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={() => setDeletingProject(null)}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="cursor-pointer"
+              onClick={() => setDeletingProject(null)}
+            >
               Cancel
             </Button>
             <Button 
               type="button" 
               variant="destructive" 
+              className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}
             >

@@ -5,8 +5,8 @@ export async function getTasks(projectId: number): Promise<TasksResponse> {
   return apiGet<TasksResponse>(`/tasks/?project_id=${projectId}`);
 }
 
-export async function getMyTasks(): Promise<TasksResponse> {
-  return apiGet<TasksResponse>(`/tasks/?assignee_id=me`);
+export async function getMyTasks(assignee_id: number): Promise<TasksResponse> {
+  return apiGet<TasksResponse>(`/tasks/?assignee_id=${assignee_id}`);
 }
 
 export async function getTask(projectId: number, taskId: number): Promise<TaskResponse> {

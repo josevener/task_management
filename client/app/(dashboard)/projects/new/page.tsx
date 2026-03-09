@@ -87,7 +87,7 @@ export default function NewProjectPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-2">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/projects">
@@ -111,7 +111,7 @@ export default function NewProjectPage() {
               Set up the core information for your new project.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name <span className="text-red-500">*</span></Label>
               <Input
@@ -193,7 +193,7 @@ export default function NewProjectPage() {
             </Button>
             <Button 
               type="submit" 
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               disabled={isSubmitting}
             >
               {isSubmitting ? (

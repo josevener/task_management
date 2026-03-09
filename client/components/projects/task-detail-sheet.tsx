@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { updateTask, deleteTask } from "@/lib/api/tasks";
 import { useToast } from "@/lib/toast";
 import { CalendarIcon, Loader2, MessageSquare, Trash2, CheckCircle2 } from "lucide-react";
+import { getProjectEligibleMembers, ProjectMember } from "@/lib/api/members";
 import type { Task } from "@/lib/types";
 
 interface TaskDetailSheetProps {
@@ -33,7 +34,18 @@ export function TaskDetailSheet({ task, isOpen, onClose, onTaskUpdated, onTaskDe
     status: "",
     priority: "",
     due_date: "",
+    assignee_id: "" as string | number,
   });
+
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+
+  useEffect(() => {
+     if (isOpen && task?.project_id) {
+         getProjectEligibleMembers(task.project_id)
+            .then(res => setMembers(res.members))
+            .catch(console.error);
+     }
+  }, [isOpen, task?.project_id]);
 
   // Reset form when task changes
   useEffect(() => {
@@ -45,6 +57,7 @@ export function TaskDetailSheet({ task, isOpen, onClose, onTaskUpdated, onTaskDe
         priority: task.priority,
         // formatted for typical html date input if present
         due_date: task.due_date ? task.due_date.split('T')[0] : "",
+        assignee_id: task.assignee_id ? String(task.assignee_id) : "none"
       });
       setIsEditing(false); // Default to view mode
     }
@@ -73,6 +86,7 @@ export function TaskDetailSheet({ task, isOpen, onClose, onTaskUpdated, onTaskDe
         status: formData.status,
         priority: formData.priority,
         due_date: formData.due_date || null,
+        assignee_id: formData.assignee_id && formData.assignee_id !== "none" ? Number(formData.assignee_id) : null,
         ...updates
     };
 
@@ -212,16 +226,34 @@ export function TaskDetailSheet({ task, isOpen, onClose, onTaskUpdated, onTaskDe
 
                  <div className="space-y-1">
                      <Label className="text-xs text-slate-500 uppercase tracking-wider">Assignee</Label>
-                     <div className="h-8 flex items-center gap-2 cursor-pointer hover:bg-slate-50 -ml-2 px-2 rounded-md">
-                         <Avatar className="h-5 w-5 border">
-                            <AvatarFallback className="text-[9px] bg-slate-200">
-                                {task.assignee_first_name ? task.assignee_first_name[0] : '?'}
-                            </AvatarFallback>
-                         </Avatar>
-                         <span className="text-sm font-medium text-slate-700">
-                             {task.assignee_first_name ? `${task.assignee_first_name} ${task.assignee_last_name}` : "Unassigned"}
-                         </span>
-                     </div>
+                     <Select 
+                        value={String(formData.assignee_id)} 
+                        onValueChange={(val) => {
+                           setFormData(prev => ({ ...prev, assignee_id: val }));
+                           if (!isEditing && task) {
+                               saveChanges({ assignee_id: val === "none" ? null : Number(val) });
+                           }
+                        }}
+                     >
+                        <SelectTrigger className="h-8 text-sm focus:ring-0 focus:ring-offset-0 border-transparent hover:bg-slate-50 px-2 -ml-2 font-medium">
+                            <div className="flex items-center gap-2">
+                                 <Avatar className="h-5 w-5 border">
+                                    <AvatarFallback className="text-[9px] bg-slate-200">
+                                        {task.assignee_first_name ? task.assignee_first_name[0] : '?'}
+                                    </AvatarFallback>
+                                 </Avatar>
+                                 <SelectValue placeholder="Unassigned" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                             <SelectItem value="none">Unassigned</SelectItem>
+                             {members.map(member => (
+                                <SelectItem key={member.id} value={String(member.id)}>
+                                    {member.first_name} {member.last_name}
+                                </SelectItem>
+                             ))}
+                        </SelectContent>
+                     </Select>
                  </div>
             </div>
 

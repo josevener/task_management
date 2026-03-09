@@ -260,7 +260,8 @@ try {
           VALUES (?, 'task_assigned', ?, ?, ?, ?, ?)
         ");
         $title = "New task assigned: {$title}";
-        $message = "You have been assigned to a new task in {$project['name']}";
+        // $message = "You have been assigned to a new task in {$project['name']}";
+        $message = "You have been assigned to a new task";
         $stmt->execute([$assignee_id, $title, $message, $workspace_id, $project_id, $task_id]);
       }
 

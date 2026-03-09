@@ -32,9 +32,11 @@ export default function OrganizationsPage() {
       setLoading(true);
       const res = await getOrganizations();
       setOrganizations(res.organizations || []);
-    } catch (error) {
+    } 
+    catch (error) {
       console.error("Failed to load organizations", error);
-    } finally {
+    } 
+    finally {
       setLoading(false);
     }
   };
@@ -62,9 +64,11 @@ export default function OrganizationsPage() {
       showToast("Organization updated successfully", "success");
       setEditingOrg(null);
       fetchOrgs();
-    } catch (error: any) {
+    } 
+    catch (error: any) {
       showToast(error.message || "Failed to update organization", "error");
-    } finally {
+    } 
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -78,9 +82,11 @@ export default function OrganizationsPage() {
       showToast("Organization deleted successfully", "success");
       setDeletingOrg(null);
       fetchOrgs();
-    } catch (error: any) {
+    } 
+    catch (error: any) {
       showToast(error.message || "Failed to delete organization", "error");
-    } finally {
+    } 
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -133,32 +139,32 @@ export default function OrganizationsPage() {
             <Card key={org.id} className="flex flex-col hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-start justify-between pb-2 space-y-0">
                 <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border shadow-sm">
-                        {org.logo_url && <AvatarImage src={org.logo_url} alt={org.name} />}
-                        <AvatarFallback className="bg-slate-100 text-slate-700 font-semibold">
-                            {org.name.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                    </Avatar>
-                    <div>
-                        <CardTitle className="text-lg">{org.name}</CardTitle>
-                        <span className="text-xs text-slate-500 font-mono">@{org.slug}</span>
-                    </div>
+                  <Avatar className="h-10 w-10 border shadow-sm">
+                    {org.logo_url && <AvatarImage src={org.logo_url} alt={org.name} />}
+                    <AvatarFallback className="bg-slate-100 text-slate-700 font-semibold">
+                      {org.name.substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-lg">{org.name}</CardTitle>
+                    <span className="text-xs text-slate-500 font-mono">@{org.slug}</span>
+                  </div>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
+                    <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
                       <span className="sr-only">Open menu</span>
                       <Settings className="h-4 w-4 text-slate-500" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(org)}>
+                    <DropdownMenuItem onClick={() => openEditDialog(org)} className="cursor-pointer">
                       Manage Settings
                     </DropdownMenuItem>
-                    <DropdownMenuItem>Billing</DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer">Billing</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
-                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                       onClick={() => setDeletingOrg(org)}
                     >
                       Delete Organization
@@ -234,10 +240,19 @@ export default function OrganizationsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingOrg(null)}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="cursor-pointer"
+                onClick={() => setEditingOrg(null)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button 
+                type="submit" 
+                disabled={isSubmitting} 
+                className="cursor-pointer"
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save changes
               </Button>
@@ -256,12 +271,18 @@ export default function OrganizationsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={() => setDeletingOrg(null)}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="cursor-pointer"
+              onClick={() => setDeletingOrg(null)}
+            >
               Cancel
             </Button>
             <Button 
               type="button" 
               variant="destructive" 
+              className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}
             >

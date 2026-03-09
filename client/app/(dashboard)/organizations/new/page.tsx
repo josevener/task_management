@@ -55,15 +55,17 @@ export default function NewOrganizationPage() {
       showToast("Organization created successfully", "success");
       router.push("/organizations");
       router.refresh(); // Reflect new orgs
-    } catch (error: any) {
+    } 
+    catch (error: any) {
       showToast(error.message || "Failed to create organization", "error");
-    } finally {
+    } 
+    finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild>
           <Link href="/organizations">
@@ -134,7 +136,7 @@ export default function NewOrganizationPage() {
             <Button type="button" variant="outline" asChild disabled={isSubmitting}>
               <Link href="/organizations">Cancel</Link>
             </Button>
-            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 cursor-pointer" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Organization
             </Button>
