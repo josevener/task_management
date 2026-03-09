@@ -1,13 +1,79 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { updateWorkspace, deleteWorkspace } from "@/lib/api/workspaces";
+import type { Workspace } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Briefcase, ChevronRight, Settings } from "lucide-react";
+import { Plus, Briefcase, ChevronRight, Settings, Loader2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/lib/toast";
 
 export default function WorkspacesPage() {
-  const { workspaces, activeWorkspace, switchWorkspace, loading } = useWorkspace();
+  const { workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, loading } = useWorkspace();
+  const { showToast } = useToast();
+
+  const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
+  const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', description: '', color_theme: '' });
+
+  const presetColors = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#db2777"];
+
+  const openEditDialog = (workspace: Workspace) => {
+    setEditingWorkspace(workspace);
+    setEditForm({
+      name: workspace.name,
+      description: workspace.description || '',
+      color_theme: workspace.color_theme || '#2563eb'
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWorkspace) return;
+
+    try {
+      setIsSubmitting(true);
+      await updateWorkspace(editingWorkspace.id, editForm);
+      showToast("Workspace updated successfully", "success");
+      setEditingWorkspace(null);
+      await refreshWorkspaces();
+    } catch (error: any) {
+      showToast(error.message || "Failed to update workspace", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    if (!deletingWorkspace) return;
+
+    try {
+      setIsSubmitting(true);
+      await deleteWorkspace(deletingWorkspace.id);
+      showToast("Workspace deleted successfully", "success");
+      setDeletingWorkspace(null);
+      await refreshWorkspaces();
+      
+      // If we deleted the active workspace, we should clear it or switch to another
+      if (activeWorkspace?.id === deletingWorkspace.id) {
+         // The context might handle this automatically on refresh, but just in case
+         // we might need a deselectWorkspace function. For now, a hard reload works too.
+         window.location.reload(); 
+      }
+    } catch (error: any) {
+      showToast(error.message || "Failed to delete workspace", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -86,15 +152,117 @@ export default function WorkspacesPage() {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
-                  <span className="sr-only">Workspace settings</span>
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
+                      <span className="sr-only">Workspace settings</span>
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openEditDialog(workspace)}>
+                      Edit Workspace
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      onClick={() => setDeletingWorkspace(workspace)}
+                    >
+                      Delete Workspace
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </CardFooter>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Edit Workspace Dialog */}
+      <Dialog open={!!editingWorkspace} onOpenChange={(open) => !open && setEditingWorkspace(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleEditSubmit}>
+            <DialogHeader>
+              <DialogTitle>Edit Workspace</DialogTitle>
+              <DialogDescription>
+                Update the details for this workspace.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Color Theme</Label>
+                <div className="flex gap-2 mt-2">
+                  {presetColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 ${
+                        editForm.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""
+                      }`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setEditForm({ ...editForm, color_theme: color })}
+                      aria-label={`Select color ${color}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingWorkspace(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Workspace Dialog */}
+      <Dialog open={!!deletingWorkspace} onOpenChange={(open) => !open && setDeletingWorkspace(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Workspace</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deletingWorkspace?.name}</strong>? This action cannot be undone and will permanently delete all associated projects and tasks.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => setDeletingWorkspace(null)}>
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive" 
+              onClick={handleDeleteSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Workspace
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

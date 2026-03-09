@@ -2,34 +2,88 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getOrganizations } from "@/lib/api/organizations";
+import { getOrganizations, updateOrganization, deleteOrganization } from "@/lib/api/organizations";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Building2, Plus, Users, Calendar, Settings } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Building2, Plus, Users, Calendar, Settings, Loader2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/lib/toast";
 
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
+
+  // Edit / Delete states
+  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
+  const [deletingOrg, setDeletingOrg] = useState<Organization | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', slug: '', subscription_tier: '' });
+
+  const fetchOrgs = async () => {
+    try {
+      setLoading(true);
+      const res = await getOrganizations();
+      setOrganizations(res.organizations || []);
+    } catch (error) {
+      console.error("Failed to load organizations", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchOrgs() {
-      try {
-        setLoading(true);
-        const res = await getOrganizations();
-        setOrganizations(res.organizations || []);
-      } catch (error) {
-        console.error("Failed to load organizations", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchOrgs();
   }, []);
+
+  const openEditDialog = (org: Organization) => {
+    setEditingOrg(org);
+    setEditForm({
+      name: org.name,
+      slug: org.slug,
+      subscription_tier: org.subscription_tier || 'Free'
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrg) return;
+
+    try {
+      setIsSubmitting(true);
+      await updateOrganization(editingOrg.id, editForm);
+      showToast("Organization updated successfully", "success");
+      setEditingOrg(null);
+      fetchOrgs();
+    } catch (error: any) {
+      showToast(error.message || "Failed to update organization", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    if (!deletingOrg) return;
+
+    try {
+      setIsSubmitting(true);
+      await deleteOrganization(deletingOrg.id);
+      showToast("Organization deleted successfully", "success");
+      setDeletingOrg(null);
+      fetchOrgs();
+    } catch (error: any) {
+      showToast(error.message || "Failed to delete organization", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const getTierBadge = (tier: string) => {
     switch(tier.toLowerCase()) {
@@ -98,9 +152,17 @@ export default function OrganizationsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Manage Settings</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openEditDialog(org)}>
+                      Manage Settings
+                    </DropdownMenuItem>
                     <DropdownMenuItem>Billing</DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                      onClick={() => setDeletingOrg(org)}
+                    >
+                      Delete Organization
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
@@ -124,6 +186,91 @@ export default function OrganizationsPage() {
           ))}
         </div>
       )}
+
+      {/* Edit Organization Dialog */}
+      <Dialog open={!!editingOrg} onOpenChange={(open) => !open && setEditingOrg(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleEditSubmit}>
+            <DialogHeader>
+              <DialogTitle>Edit Organization</DialogTitle>
+              <DialogDescription>
+                Update the details for this organization.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-slug">Slug</Label>
+                <Input
+                  id="edit-slug"
+                  value={editForm.slug}
+                  onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-tier">Subscription Tier</Label>
+                <Select 
+                  value={editForm.subscription_tier} 
+                  onValueChange={(val) => setEditForm({ ...editForm, subscription_tier: val })}
+                >
+                  <SelectTrigger id="edit-tier">
+                    <SelectValue placeholder="Select tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Free">Free</SelectItem>
+                    <SelectItem value="Pro">Pro</SelectItem>
+                    <SelectItem value="Enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingOrg(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Organization Dialog */}
+      <Dialog open={!!deletingOrg} onOpenChange={(open) => !open && setDeletingOrg(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Organization</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deletingOrg?.name}</strong>? This action cannot be undone and will permanently delete all associated workspaces, projects, and tasks.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => setDeletingOrg(null)}>
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive" 
+              onClick={handleDeleteSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Organization
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

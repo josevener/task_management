@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
-import { getProjects } from "@/lib/api/projects";
+import { getProjects, updateProject, deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,40 +11,111 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FolderKanban, Plus, Calendar, Clock, MoreHorizontal, Search, FilterX } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FolderKanban, Plus, Calendar, Clock, MoreHorizontal, Search, FilterX, Loader2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/lib/toast";
 
 export default function ProjectsPage() {
   const { activeWorkspace } = useWorkspace();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
 
-  useEffect(() => {
-    async function fetchProjects() {
-      if (!activeWorkspace) {
-        setProjects([]);
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        setLoading(true);
-        const res = await getProjects(activeWorkspace.id);
-        setProjects(res.projects || []);
-      } catch (error) {
-        console.error("Failed to load projects", error);
-      } finally {
-        setLoading(false);
-      }
-    }
+  // Edit / Delete states
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editForm, setEditForm] = useState({ 
+    name: '', 
+    description: '', 
+    status: '',
+    health_status: '',
+    start_date: '',
+    end_date: ''
+  });
 
+  const fetchProjects = async () => {
+    if (!activeWorkspace) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const res = await getProjects(activeWorkspace.id);
+      setProjects(res.projects || []);
+    } catch (error) {
+      console.error("Failed to load projects", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchProjects();
   }, [activeWorkspace]);
+
+  const openEditDialog = (project: Project) => {
+    setEditingProject(project);
+    setEditForm({
+      name: project.name,
+      description: project.description || '',
+      status: project.status || 'active',
+      health_status: project.health_status || 'not_set',
+      start_date: project.start_date ? project.start_date.split('T')[0] : '', // Format for simple input type date
+      end_date: project.end_date ? project.end_date.split('T')[0] : ''
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+
+    try {
+      setIsSubmitting(true);
+      const dataToSubmit: any = { ...editForm };
+      
+      // Cleanup empty dates so backend receives null
+      if (!dataToSubmit.start_date) delete dataToSubmit.start_date;
+      if (!dataToSubmit.end_date) delete dataToSubmit.end_date;
+
+      await updateProject(editingProject.id, dataToSubmit);
+      showToast("Project updated successfully", "success");
+      setEditingProject(null);
+      fetchProjects();
+    } catch (error: any) {
+      showToast(error.message || "Failed to update project", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    if (!deletingProject) return;
+
+    try {
+      setIsSubmitting(true);
+      await deleteProject(deletingProject.id);
+      showToast("Project deleted successfully", "success");
+      setDeletingProject(null);
+      fetchProjects();
+    } catch (error: any) {
+      showToast(error.message || "Failed to delete project", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
 
   // Derive filtered projects
   const filteredProjects = useMemo(() => {
@@ -226,14 +297,19 @@ export default function ProjectsPage() {
                        </Button>
                      </DropdownMenuTrigger>
                      <DropdownMenuContent align="end">
-                       <DropdownMenuItem asChild>
-                         <Link href={`/projects/${project.id}`}>View details</Link>
-                       </DropdownMenuItem>
-                       <DropdownMenuItem asChild>
-                         <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
-                       </DropdownMenuItem>
-                       <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
-                     </DropdownMenuContent>
+  <DropdownMenuItem asChild>
+    <Link href={`/projects/${project.id}`}>View details</Link>
+  </DropdownMenuItem>
+  <DropdownMenuItem onClick={() => openEditDialog(project)}>
+    Edit project
+  </DropdownMenuItem>
+  <DropdownMenuItem 
+    className="text-red-600 focus:text-red-600" 
+    onClick={() => setDeletingProject(project)}
+  >
+    Delete project
+  </DropdownMenuItem>
+</DropdownMenuContent>
                    </DropdownMenu>
                  </div>
                </CardHeader>
@@ -271,6 +347,131 @@ export default function ProjectsPage() {
            ))}
         </div>
       )}
+
+      {/* Edit Project Dialog */}
+      <Dialog open={!!editingProject} onOpenChange={(open) => !open && setEditingProject(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleEditSubmit}>
+            <DialogHeader>
+              <DialogTitle>Edit Project</DialogTitle>
+              <DialogDescription>
+                Update the settings and status of this project.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-name">Project Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-status">Status</Label>
+                  <Select 
+                    value={editForm.status} 
+                    onValueChange={(val) => setEditForm({ ...editForm, status: val })}
+                  >
+                    <SelectTrigger id="edit-status">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="on_hold">On Hold</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-health">Health Status</Label>
+                  <Select 
+                    value={editForm.health_status} 
+                    onValueChange={(val) => setEditForm({ ...editForm, health_status: val })}
+                  >
+                    <SelectTrigger id="edit-health">
+                      <SelectValue placeholder="Select health" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="not_set">Not Set</SelectItem>
+                      <SelectItem value="on_track">On Track</SelectItem>
+                      <SelectItem value="at_risk">At Risk</SelectItem>
+                      <SelectItem value="off_track">Off Track</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-start">Start Date</Label>
+                  <Input
+                    id="edit-start"
+                    type="date"
+                    value={editForm.start_date}
+                    onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-end">End Date</Label>
+                  <Input
+                    id="edit-end"
+                    type="date"
+                    value={editForm.end_date}
+                    onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingProject(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Project Dialog */}
+      <Dialog open={!!deletingProject} onOpenChange={(open) => !open && setDeletingProject(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deletingProject?.name}</strong>? This action cannot be undone and will permanently delete all associated tasks, comments, and files.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => setDeletingProject(null)}>
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              variant="destructive" 
+              onClick={handleDeleteSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
