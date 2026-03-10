@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
-import type { Task, TasksResponse, TaskResponse } from '../types';
+import type { TasksResponse, TaskResponse } from '../types';
 
 export async function getTasks(projectId: number): Promise<TasksResponse> {
   return apiGet<TasksResponse>(`/tasks/?project_id=${projectId}`);
@@ -10,7 +10,7 @@ export async function getMyTasks(assignee_id: number): Promise<TasksResponse> {
 }
 
 export async function getTask(projectId: number, taskId: number): Promise<TaskResponse> {
-  return apiGet<TaskResponse>(`/tasks/get.php?id=${taskId}`);
+  return apiGet<TaskResponse>(`/tasks/${taskId}`);
 }
 
 export interface CreateTaskData {
@@ -38,17 +38,17 @@ export interface UpdateTaskData {
 }
 
 export async function updateTask(taskId: number, data: UpdateTaskData): Promise<TaskResponse> {
-  return apiPatch<TaskResponse>(`/tasks/update.php?id=${taskId}`, data);
+  return apiPatch<TaskResponse>(`/tasks/${taskId}`, data);
 }
 
 export async function updateTaskStatus(taskId: number, status: string, position?: number): Promise<TaskResponse> {
-  const payload: any = { status };
+  const payload: { status: string; position?: number } = { status };
   if (position !== undefined) {
     payload.position = position;
   }
-  return apiPatch<TaskResponse>(`/tasks/update.php?id=${taskId}`, payload);
+  return apiPatch<TaskResponse>(`/tasks/${taskId}`, payload);
 }
 
 export async function deleteTask(taskId: number): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/tasks/delete.php?id=${taskId}`);
+  return apiDelete<{ message: string }>(`/tasks/${taskId}`);
 }

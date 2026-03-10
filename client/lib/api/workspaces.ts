@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
-import type { Workspace, WorkspacesResponse, WorkspaceResponse } from '../types';
+import type { WorkspacesResponse, WorkspaceResponse } from '../types';
 
 export async function getWorkspaces(organizationId?: number): Promise<WorkspacesResponse> {
   const url = organizationId 
@@ -32,9 +32,9 @@ export interface UpdateWorkspaceData {
 }
 
 export async function updateWorkspace(id: number, data: UpdateWorkspaceData): Promise<WorkspaceResponse> {
-  return apiPatch<WorkspaceResponse>(`/workspaces/update.php?id=${id}`, data);
+  return apiPatch<WorkspaceResponse>(`/workspaces/${id}`, data);
 }
 
 export async function deleteWorkspace(id: number): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/workspaces/delete.php?id=${id}`);
+  return apiDelete<{ message: string }>(`/workspaces/${id}`);
 }

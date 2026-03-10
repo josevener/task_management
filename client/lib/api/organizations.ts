@@ -30,9 +30,9 @@ export interface UpdateOrganizationData {
 }
 
 export async function updateOrganization(organizationId: number, data: UpdateOrganizationData): Promise<OrganizationResponse> {
-  return apiPatch<OrganizationResponse>(`/organizations/update.php?id=${organizationId}`, data);
+  return apiPatch<OrganizationResponse>(`/organizations/${organizationId}`, data);
 }
 
 export async function deleteOrganization(organizationId: number): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/organizations/delete.php?id=${organizationId}`);
+  return apiDelete<{ message: string }>(`/organizations/${organizationId}`);
 }

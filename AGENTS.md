@@ -307,9 +307,9 @@ For a **production-ready MVP**, start with:
 # Tech Stack
 
 ## Backend
-- **Language**: PHP (Pure PHP, no framework)
-- **Server**: XAMPP (Apache/MySQL)
-- **Database**: MySQL/MariaDB
+- **Language**: Node.js (JavaScript)
+- **Framework**: Express.js
+- **Database**: MySQL/MariaDB (via `mysql2` and `db-migrate`)
 - **API**: RESTful API endpoints
 - **Location**: Root directory (`/`)
 
@@ -324,7 +324,7 @@ For a **production-ready MVP**, start with:
 
 ## Testing
 - **Frontend**: Jest + React Testing Library
-- **Backend**: PHPUnit
+- **Backend**: Jest or Mocha/Chai
 - **E2E**: Playwright or Cypress (if needed)
 
 # Project Structure
@@ -338,15 +338,16 @@ task_management/
 │   ├── hooks/            # Custom React hooks
 │   ├── public/           # Static assets
 │   └── package.json
-├── api/                   # PHP API endpoints (optional structure)
-├── config/                # PHP configuration files
-├── includes/              # PHP includes/utilities
-├── database/              # Database migrations, seeds (optional)
+├── routes/                # Express API routes
+├── config/                # Configuration files
+├── middleware/            # Express middleware
+├── utils/                 # Utility functions
+├── migrations/            # Database migrations
 └── AGENTS.md             # This file
 ```
 
 **Important**: 
-- PHP backend code goes in the **root directory** (not in a `backend/` folder)
+- Node.js backend code goes in the **root directory** (not in a `backend/` folder)
 - Frontend code goes in the **`client/` folder**
 - Do not create a `backend/` folder structure
 
@@ -354,11 +355,11 @@ task_management/
 - Use 2 spaces for indentation. Tabs are allowed but **must represent 2 spaces** — do not use 4-space tabs
 - Ensure variable names are descriptive and follow project conventions.
 - **Naming Conventions by Context**:
-  - **Backend (PHP)**:
-    - Variables and function names: `snake_case` (e.g., `$employee_id`, `get_time_logs()`)
-    - Class names: `PascalCase` (e.g., `TimeLog`, `EmployeeController`)
+  - **Backend (Node.js/Express)**:
+    - Variables and function names: `camelCase` (e.g., `employeeId`, `getTimeLogs`)
+    - Class/Model names: `PascalCase` (e.g., `TimeLog`, `EmployeeController`)
     - Constants: `SCREAMING_SNAKE_CASE` (e.g., `MAX_RETRY_COUNT`)
-    - Database model attributes follow the column name casing (see Database section below)
+    - Database model attributes follow the column name casing (snake_case)
   - **Frontend (TypeScript/React)**:
     - Variables and function names: `camelCase` (e.g., `employeeId`, `getTimeLogs`)
     - Component names: `PascalCase` (e.g., `TimeLogForm`, `EmployeeView`)
@@ -367,7 +368,7 @@ task_management/
     - Custom hooks: `camelCase` starting with `use` (e.g., `useTimeLogs`, `useEmployeeData`)
   - **JSON (API Request & Response Payloads)**:
     - All keys must use `snake_case` (e.g., `{ "employee_id": 1, "time_in": "08:00" }`)
-    - Match backend PHP attribute names for consistency
+    - Match backend attribute names for consistency
     - Boolean fields should be clearly named (e.g., `is_active`, `has_permission`)
   - **Database (Tables & Columns)**:
     - Table names: `snake_case`, plural (e.g., `time_logs`, `employee_schedules`)
@@ -386,21 +387,21 @@ task_management/
   - Show loading states using shadcn/ui components (e.g., `Skeleton`, `Spinner`)
   - Always handle errors gracefully with try/catch blocks
   - Display user-friendly error messages, not raw error objects
-- **Backend (PHP)**:
-  - Wrap logic in `try...catch` blocks
+- **Backend (Node.js/Express)**:
+  - Wrap logic in `try...catch` blocks for async controllers/routes
   - Catch exceptions and return JSON responses with `error_message` key
   - Use HTTP status codes appropriately (200 for success, 400 for client errors, 500 for server errors)
-  - Always set proper `Content-Type: application/json` headers
   - Example pattern:
-    ```php
-    header('Content-Type: application/json');
-    try {
-      // Logic
-      echo json_encode(['success' => true, 'data' => $result]);
-    } catch (Exception $e) {
-      http_response_code(500);
-      echo json_encode(['error_message' => $e->getMessage()]);
-    }
+    ```javascript
+    router.get('/endpoint', async (req, res) => {
+      try {
+        // Logic
+        res.status(200).json({ success: true, data: result });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error_message: error.message });
+      }
+    });
     ```
 
 # Frontend Coding Standards
@@ -426,7 +427,7 @@ All frontend UIs must be built with the end user in mind — especially non-tech
   - `loading.tsx` for loading states
   - `error.tsx` for error boundaries
   - `not-found.tsx` for 404 pages
-- **API Routes**: Use Next.js API routes only for frontend-specific needs. Backend API should be in PHP.
+- **API Routes**: Use Next.js API routes only for frontend-specific needs. Backend API should be in Node.js/Express.
 - **Data Fetching**: Use `fetch` with proper caching strategies, or React Server Components for data fetching
 
 ## React/TypeScript
@@ -462,38 +463,39 @@ All frontend UIs must be built with the end user in mind — especially non-tech
 
 # Backend Coding Standards
 
-## PHP Structure
-- **Pure PHP**: Do not use frameworks (Laravel, Symfony, etc.). Use pure PHP.
+## Node.js / Express Structure
+- **Framework**: Express.js
 - **File Organization**: 
-  - Group related functionality in separate files
-  - Use `includes/` or `config/` folders for shared code
-  - Keep API endpoints organized (consider `api/` folder structure)
+  - Organize routes in `routes/` directory
+  - Keep middleware in `middleware/` directory
+  - Use `utils/` or `config/` folders for shared code and configuration
 - **Security**:
-  - Always use prepared statements for database queries (PDO or MySQLi)
+  - Always use parameterized queries for database operations
   - Sanitize and validate all user inputs
-  - Use `htmlspecialchars()` or `filter_var()` for output escaping
-  - Implement proper authentication and authorization
+  - Use appropriate middleware (e.g., `cors`)
+  - Implement proper authentication and authorization (e.g., session-based or token-based)
   - Use HTTPS in production
   - Protect against SQL injection, XSS, CSRF attacks
 
 ## Database
-- **Queries**: Always use prepared statements. NEVER concatenate user input into SQL queries.
+- **Queries**: Always use parameterized queries. NEVER concatenate user input into SQL queries.
 - **Transactions**: Use database transactions for multi-step operations
-- **Connection**: Use PDO or MySQLi with proper error handling
+- **Connection**: Use `mysql2` with promise wrapper for query execution
 - **Example Pattern**:
-  ```php
+  ```javascript
+  const db = require('../config/database');
+
   try {
-    $pdo = new PDO($dsn, $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    await db.beginTransaction();
     
-    $pdo->beginTransaction();
+    const [result] = await db.execute(
+      "INSERT INTO tasks (title, description) VALUES (?, ?)", 
+      [title, description]
+    );
     
-    $stmt = $pdo->prepare("INSERT INTO tasks (title, description) VALUES (?, ?)");
-    $stmt->execute([$title, $description]);
-    
-    $pdo->commit();
-  } catch (PDOException $e) {
-    $pdo->rollBack();
+    await db.commit();
+  } catch (error) {
+    await db.rollback();
     // Handle error
   }
   ```
@@ -501,12 +503,12 @@ All frontend UIs must be built with the end user in mind — especially non-tech
 ## API Endpoints
 - **RESTful**: Follow REST conventions where appropriate
 - **Response Format**: Always return JSON with consistent structure:
-  ```php
+  ```javascript
   // Success
-  ['success' => true, 'data' => $data]
+  { success: true, data: result }
   
   // Error
-  ['error_message' => 'User-friendly error message']
+  { error_message: 'User-friendly error message' }
   ```
 - **HTTP Methods**: Use appropriate HTTP methods (GET, POST, PUT, DELETE, PATCH)
 - **Status Codes**: Return appropriate HTTP status codes (200, 201, 400, 401, 403, 404, 500)
@@ -535,24 +537,27 @@ All frontend UIs must be built with the end user in mind — especially non-tech
   });
   ```
 
-## Backend Testing (PHPUnit)
-- **Unit Tests**: Test individual functions and classes
-- **Integration Tests**: Test API endpoints and database operations
-- **File Location**: Create test files in a `tests/` directory mirroring the source structure
+## Backend Testing (Jest or Mocha/Chai)
+- **Unit Tests**: Test individual functions and controllers
+- **Integration Tests**: Test API endpoints and database operations (e.g., using `supertest`)
+- **File Location**: Create test files in a `tests/` directory or next to the code (e.g., `controller.test.js`)
 - **Best Practices**:
   - Test both success and error cases
   - Use database fixtures or mocks for database-dependent tests
   - Test edge cases and boundary conditions
   - Keep tests isolated and independent
 - **Example**:
-  ```php
-  use PHPUnit\Framework\TestCase;
+  ```javascript
+  const request = require('supertest');
+  const app = require('../server');
   
-  class TaskTest extends TestCase {
-    public function testCreateTask() {
-      // Test implementation
-    }
-  }
+  describe('Task API', () => {
+    it('should create a task', async () => {
+      const res = await request(app).post('/api/tasks').send({ title: 'Test' });
+      expect(res.statusCode).toEqual(200);
+      expect(res.body.success).toBe(true);
+    });
+  });
   ```
 
 ## Test Coverage
@@ -563,15 +568,16 @@ All frontend UIs must be built with the end user in mind — especially non-tech
 # Database Standards
 
 ## Table Creation
-- Use SQL migration files or version-controlled SQL scripts for all database changes
+- Use `db-migrate` for all database schema changes
 - Document all schema changes
 - **Foreign Keys**: Add appropriate foreign key constraints and indices for performance
 - **Timestamps**: Include `created_at` and `updated_at` columns where applicable
 - **Soft Deletes**: Consider `deleted_at` for soft delete functionality if needed
 
 ## Migrations
-- Create migration files with descriptive names (e.g., `001_create_tasks_table.sql`)
-- Include both `up` and `down` migrations (or document rollback procedures)
+- Create migration files using `npm run migrate:create` (e.g., `npm run migrate:create create-tasks-table`)
+- Include both `up` and `down` migrations in the generated files (`.js` or `.sql`)
+- Apply migrations using `npm run migrate`
 - Test migrations on development before applying to production
 
 # When in Doubt

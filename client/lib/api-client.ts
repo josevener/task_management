@@ -1,14 +1,15 @@
+import axios from 'axios';
+
 /**
  * API Client
- * 
- * Centralized API client for making requests to the PHP backend.
- * Handles authentication, error handling, and response parsing.
+ *
+ * Centralized API client for making requests to the Node.js backend.
+ * Uses axios so request configuration and error handling stay consistent.
  */
 
-// API base URL - adjust based on your XAMPP setup
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/task_management/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8500/api';
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error_message?: string;
@@ -39,46 +40,44 @@ export class ApiClientError extends Error {
 /**
  * Make an API request
  */
-async function apiRequest<T = any>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  const defaultHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  // Add credentials for session-based auth (cookies)
-  const config: RequestInit = {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-    credentials: 'include', // Important for session cookies
-  };
-
+async function apiRequest<T = unknown>(endpoint: string, options: {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  data?: unknown;
+}): Promise<T> {
   try {
-    const response = await fetch(url, config);
-    const data: ApiResponse<T> = await response.json();
+    const response = await axios.request<ApiResponse<T>>({
+      url: `${API_BASE_URL}${endpoint}`,
+      method: options.method,
+      data: options.data,
+      withCredentials: true,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (!response.ok || !data.success) {
-      const errorMessage = data.error_message || `Request failed with status ${response.status}`;
+    if (!response.data.success) {
       throw new ApiClientError(
-        errorMessage,
+        response.data.error_message || `Request failed with status ${response.status}`,
         response.status,
-        data.errors
+        response.data.errors
       );
     }
 
-    return data.data as T;
+    return response.data.data as T;
   } catch (error) {
     if (error instanceof ApiClientError) {
       throw error;
     }
 
-    // Network or other errors
+    if (axios.isAxiosError(error)) {
+      const apiError = error.response?.data as ApiResponse<T> | undefined;
+      throw new ApiClientError(
+        apiError?.error_message || error.message || 'Network error occurred',
+        error.response?.status || 0,
+        apiError?.errors
+      );
+    }
+
     throw new ApiClientError(
       error instanceof Error ? error.message : 'Network error occurred',
       0
@@ -89,56 +88,43 @@ async function apiRequest<T = any>(
 /**
  * GET request
  */
-export async function apiGet<T = any>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'GET',
-  });
+export async function apiGet<T = unknown>(endpoint: string): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'GET' });
 }
 
 /**
  * POST request
  */
-export async function apiPost<T = any>(
+export async function apiPost<T = unknown>(
   endpoint: string,
-  body?: any
+  body?: unknown
 ): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'POST',
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  return apiRequest<T>(endpoint, { method: 'POST', data: body });
 }
 
 /**
  * PUT request
  */
-export async function apiPut<T = any>(
+export async function apiPut<T = unknown>(
   endpoint: string,
-  body?: any
+  body?: unknown
 ): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'PUT',
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  return apiRequest<T>(endpoint, { method: 'PUT', data: body });
 }
 
 /**
  * PATCH request
  */
-export async function apiPatch<T = any>(
+export async function apiPatch<T = unknown>(
   endpoint: string,
-  body?: any
+  body?: unknown
 ): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'PATCH',
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  return apiRequest<T>(endpoint, { method: 'PATCH', data: body });
 }
 
 /**
  * DELETE request
  */
-export async function apiDelete<T = any>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'DELETE',
-  });
+export async function apiDelete<T = unknown>(endpoint: string): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'DELETE' });
 }
