@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Plus, Loader2, Users, UserPlus } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Trash2, Plus, Loader2, Users } from "lucide-react";
+import Link from "next/link";
 
 export default function WorkspaceMembersPage() {
   const { id } = useParams();
@@ -25,20 +25,8 @@ export default function WorkspaceMembersPage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  // Add Member State
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [addForm, setAddForm] = useState({ email: "", role: "member" });
-
-  // Create Member State
-  const [createForm, setCreateForm] = useState({
-    first_name: "",
-    last_name: "",
-    email: "",
-    password: "",
-    role: "member"
-  });
+  const [memberToRemove, setMemberToRemove] = useState<number | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   useEffect(() => {
     if (!wsLoading && activeWorkspace && activeWorkspace.id.toString() !== id) {
@@ -67,76 +55,25 @@ export default function WorkspaceMembersPage() {
     fetchMembers();
   }, [id]);
 
-  const handleAddMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addForm.email.trim()) {
-      showToast("Email is required", "error");
-      return;
-    }
+  useEffect(() => {
+    fetchMembers();
+  }, [id]);
+
+  const handleRemoveMemberConfirm = async () => {
+    if (!memberToRemove) return;
 
     try {
-      setIsAdding(true);
-      await addWorkspaceMember(Number(id), addForm.email, addForm.role, 'invite');
-      showToast("Member invited successfully", "success");
-      setIsAddOpen(false);
-      setAddForm({ email: "", role: "member" });
-      fetchMembers(); // refresh list
-    }
-    catch (err: any) {
-      showToast(err.message || "Failed to invite member", "error");
-    }
-    finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleCreateMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createForm.email.trim() || !createForm.first_name.trim() || !createForm.last_name.trim() || !createForm.password.trim()) {
-      showToast("All fields are required to create a new user", "error");
-      return;
-    }
-    if (createForm.password.length < 8) {
-      showToast("Password must be at least 8 characters", "error");
-      return;
-    }
-
-    try {
-      setIsAdding(true);
-      await addWorkspaceMember(
-        Number(id),
-        createForm.email,
-        createForm.role,
-        'create',
-        {
-          first_name: createForm.first_name,
-          last_name: createForm.last_name,
-          password: createForm.password
-        }
-      );
-      showToast("New user created and added to workspace!", "success");
-      setIsAddOpen(false);
-      setCreateForm({ first_name: "", last_name: "", email: "", password: "", role: "member" });
-      fetchMembers(); // refresh list
-    }
-    catch (err: any) {
-      showToast(err.message || "Failed to create member", "error");
-    }
-    finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleRemoveMember = async (membershipId: number) => {
-    if (!confirm("Are you sure you want to remove this member from the workspace?")) return;
-
-    try {
-      await removeWorkspaceMember(membershipId);
+      setIsRemoving(true);
+      await removeWorkspaceMember(memberToRemove);
       showToast("Member removed", "success");
-      setMembers(prev => prev.filter(m => m.membership_id !== membershipId));
+      setMembers(prev => prev.filter(m => m.membership_id !== memberToRemove));
+      setMemberToRemove(null);
     }
     catch (err: any) {
       showToast(err.message || "Failed to remove member", "error");
+    }
+    finally {
+      setIsRemoving(false);
     }
   };
 
@@ -160,9 +97,11 @@ export default function WorkspaceMembersPage() {
           <p className="text-slate-500 mt-1">Manage who has access to {activeWorkspace?.name}</p>
         </div>
         <Button
-          onClick={() => setIsAddOpen(true)}
+          asChild
           className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
-          <Plus className="h-4 w-4 mr-2" /> Add Member
+          <Link href={`/workspaces/${id}/members/new`}>
+            <Plus className="h-4 w-4 mr-2" /> Add Member
+          </Link>
         </Button>
       </div>
 
@@ -198,7 +137,7 @@ export default function WorkspaceMembersPage() {
                       variant="ghost"
                       size="icon"
                       className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 cursor-pointer"
-                      onClick={() => member.membership_id && handleRemoveMember(member.membership_id)}
+                      onClick={() => member.membership_id && setMemberToRemove(member.membership_id)}
                       title="Remove Member"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -211,165 +150,33 @@ export default function WorkspaceMembersPage() {
         </CardContent>
       </Card>
 
-      {/* Add/Create Member Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={memberToRemove !== null} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-blue-600" />
-              Add Workspace Member
-            </DialogTitle>
+            <DialogTitle className="text-red-600">Remove Member</DialogTitle>
             <DialogDescription>
-              Invite someone who already has an account, or create a brand new user profile for them.
+              Are you sure you want to remove this member from the workspace? They will lose access to all projects and tasks within this workspace.
             </DialogDescription>
           </DialogHeader>
-
-          <Tabs defaultValue="invite" className="w-full mt-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="invite" className="cursor-pointer">Invite Existing</TabsTrigger>
-              <TabsTrigger value="create" className="cursor-pointer">Create New</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="invite" className="mt-4 border rounded-md p-4">
-              <form onSubmit={handleAddMember}>
-                <div className="grid gap-4 py-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium">User Email Address</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={addForm.email}
-                      onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                      placeholder="e.g. jane@example.com"
-                      required
-                    />
-                    <p className="text-xs text-slate-500">The user must have already registered an account using this email.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="role" className="text-sm font-medium">Workspace Role</Label>
-                    <Select value={addForm.role} onValueChange={(val) => setAddForm({ ...addForm, role: val })}>
-                      <SelectTrigger id="role" className="bg-white">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="guest">Guest</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="cursor-pointer"
-                    onClick={() => setIsAddOpen(false)}
-                    disabled={isAdding}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                    disabled={isAdding}
-                  >
-                    {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Invite Member
-                  </Button>
-                </div>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="create" className="mt-4 border rounded-md p-4">
-              <form onSubmit={handleCreateMember}>
-                <div className="grid gap-4 py-2">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="first_name" className="text-sm font-medium">First Name</Label>
-                      <Input
-                        id="first_name"
-                        value={createForm.first_name}
-                        onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
-                        placeholder="John"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="last_name" className="text-sm font-medium">Last Name</Label>
-                      <Input
-                        id="last_name"
-                        value={createForm.last_name}
-                        onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
-                        placeholder="Doe"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="create_email" className="text-sm font-medium">Email Address</Label>
-                    <Input
-                      id="create_email"
-                      type="email"
-                      value={createForm.email}
-                      onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                      placeholder="john.doe@example.com"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="create_password" className="text-sm font-medium">Temporary Password</Label>
-                    <Input
-                      id="create_password"
-                      type="password"
-                      value={createForm.password}
-                      onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                      placeholder="Minimum 8 characters"
-                      required
-                      minLength={8}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="create_role" className="text-sm font-medium">Workspace Role</Label>
-                    <Select value={createForm.role} onValueChange={(val) => setCreateForm({ ...createForm, role: val })}>
-                      <SelectTrigger id="create_role" className="bg-white">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="guest">Guest</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="cursor-pointer"
-                    onClick={() => setIsAddOpen(false)}
-                    disabled={isAdding}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
-                    disabled={isAdding}
-                  >
-                    {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Create & Add
-                  </Button>
-                </div>
-              </form>
-            </TabsContent>
-          </Tabs>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setMemberToRemove(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="cursor-pointer"
+              onClick={handleRemoveMemberConfirm}
+              disabled={isRemoving}
+            >
+              {isRemoving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Remove Member
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

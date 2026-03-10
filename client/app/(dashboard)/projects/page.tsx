@@ -29,18 +29,9 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
 
-  // Edit / Delete states
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  // Delete state
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: '',
-    description: '',
-    status: '',
-    health_status: '',
-    start_date: '',
-    end_date: ''
-  });
 
   const fetchProjects = async () => {
     if (!activeWorkspace) {
@@ -65,43 +56,6 @@ export default function ProjectsPage() {
   useEffect(() => {
     fetchProjects();
   }, [activeWorkspace]);
-
-  const openEditDialog = (project: Project) => {
-    setEditingProject(project);
-    setEditForm({
-      name: project.name,
-      description: project.description || '',
-      status: project.status || 'active',
-      health_status: project.health_status || 'not_set',
-      start_date: project.start_date ? project.start_date.split('T')[0] : '', // Format for simple input type date
-      end_date: project.end_date ? project.end_date.split('T')[0] : ''
-    });
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProject) return;
-
-    try {
-      setIsSubmitting(true);
-      const dataToSubmit: any = { ...editForm };
-
-      // Cleanup empty dates so backend receives null
-      if (!dataToSubmit.start_date) delete dataToSubmit.start_date;
-      if (!dataToSubmit.end_date) delete dataToSubmit.end_date;
-
-      await updateProject(editingProject.id, dataToSubmit);
-      showToast("Project updated successfully", "success");
-      setEditingProject(null);
-      fetchProjects();
-    }
-    catch (error: any) {
-      showToast(error.message || "Failed to update project", "error");
-    }
-    finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleDeleteSubmit = async () => {
     if (!deletingProject) return;
@@ -158,7 +112,7 @@ export default function ProjectsPage() {
         <p className="text-muted-foreground max-w-md">
           Please select a workspace from the sidebar or create a new one to view and manage your projects.
         </p>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700">
+        <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
           <Link href="/workspaces/new">Create Workspace</Link>
         </Button>
       </div>
@@ -185,7 +139,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Projects</h1>
@@ -193,7 +147,7 @@ export default function ProjectsPage() {
             Manage projects for <span className="font-semibold">{activeWorkspace.name}</span>
           </p>
         </div>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700 shrink-0">
+        <Button asChild className="bg-blue-600 hover:bg-blue-700 shrink-0 cursor-pointer">
           <Link href="/projects/new">
             <Plus className="mr-2 h-4 w-4" />
             New Project
@@ -239,7 +193,7 @@ export default function ProjectsPage() {
           </Select>
 
           {hasActiveFilters && (
-            <Button variant="ghost" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 px-3" title="Clear Filters">
+            <Button variant="ghost" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 px-3 cursor-pointer" title="Clear Filters">
               <FilterX className="h-4 w-4" />
             </Button>
           )}
@@ -259,7 +213,7 @@ export default function ProjectsPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             Get started by creating your first project in this workspace.
           </p>
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
+          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
             <Link href="/projects/new">Create First Project</Link>
           </Button>
         </Card>
@@ -272,7 +226,7 @@ export default function ProjectsPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             We couldn't find any projects matching your current filters.
           </p>
-          <Button variant="outline" onClick={clearFilters}>
+          <Button variant="outline" onClick={clearFilters} className="cursor-pointer">
             Clear Filters
           </Button>
         </Card>
@@ -311,9 +265,9 @@ export default function ProjectsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="cursor-pointer"
-                        onClick={() => openEditDialog(project)}
+                        asChild
                       >
-                        Edit project
+                        <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-red-600 focus:text-red-600 cursor-pointer"
@@ -359,114 +313,6 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
-
-      {/* Edit Project Dialog */}
-      <Dialog open={!!editingProject} onOpenChange={(open) => !open && setEditingProject(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form onSubmit={handleEditSubmit}>
-            <DialogHeader>
-              <DialogTitle>Edit Project</DialogTitle>
-              <DialogDescription>
-                Update the settings and status of this project.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-name">Project Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  rows={3}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-status">Status</Label>
-                  <Select
-                    value={editForm.status}
-                    onValueChange={(val) => setEditForm({ ...editForm, status: val })}
-                  >
-                    <SelectTrigger id="edit-status">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="on_hold">On Hold</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-health">Health Status</Label>
-                  <Select
-                    value={editForm.health_status}
-                    onValueChange={(val) => setEditForm({ ...editForm, health_status: val })}
-                  >
-                    <SelectTrigger id="edit-health">
-                      <SelectValue placeholder="Select health" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="not_set">Not Set</SelectItem>
-                      <SelectItem value="on_track">On Track</SelectItem>
-                      <SelectItem value="at_risk">At Risk</SelectItem>
-                      <SelectItem value="off_track">Off Track</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-start">Start Date</Label>
-                  <Input
-                    id="edit-start"
-                    type="date"
-                    value={editForm.start_date}
-                    onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="edit-end">End Date</Label>
-                  <Input
-                    id="edit-end"
-                    type="date"
-                    value={editForm.end_date}
-                    onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                className="cursor-pointer"
-                onClick={() => setEditingProject(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-green-600 hover:bg-green-700 cursor-pointer"
-              >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Project Dialog */}
       <Dialog open={!!deletingProject} onOpenChange={(open) => !open && setDeletingProject(null)}>

@@ -21,21 +21,18 @@ export default function OrganizationsPage() {
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
 
-  // Edit / Delete states
-  const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [deletingOrg, setDeletingOrg] = useState<Organization | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', slug: '', subscription_tier: '' });
 
   const fetchOrgs = async () => {
     try {
       setLoading(true);
       const res = await getOrganizations();
       setOrganizations(res.organizations || []);
-    } 
+    }
     catch (error) {
       console.error("Failed to load organizations", error);
-    } 
+    }
     finally {
       setLoading(false);
     }
@@ -44,34 +41,6 @@ export default function OrganizationsPage() {
   useEffect(() => {
     fetchOrgs();
   }, []);
-
-  const openEditDialog = (org: Organization) => {
-    setEditingOrg(org);
-    setEditForm({
-      name: org.name,
-      slug: org.slug,
-      subscription_tier: org.subscription_tier || 'Free'
-    });
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingOrg) return;
-
-    try {
-      setIsSubmitting(true);
-      await updateOrganization(editingOrg.id, editForm);
-      showToast("Organization updated successfully", "success");
-      setEditingOrg(null);
-      fetchOrgs();
-    } 
-    catch (error: any) {
-      showToast(error.message || "Failed to update organization", "error");
-    } 
-    finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleDeleteSubmit = async () => {
     if (!deletingOrg) return;
@@ -82,17 +51,17 @@ export default function OrganizationsPage() {
       showToast("Organization deleted successfully", "success");
       setDeletingOrg(null);
       fetchOrgs();
-    } 
+    }
     catch (error: any) {
       showToast(error.message || "Failed to delete organization", "error");
-    } 
+    }
     finally {
       setIsSubmitting(false);
     }
   };
 
   const getTierBadge = (tier: string) => {
-    switch(tier.toLowerCase()) {
+    switch (tier.toLowerCase()) {
       case 'enterprise': return <Badge className="bg-purple-600 hover:bg-purple-700">{tier}</Badge>;
       case 'pro': return <Badge className="bg-blue-600 hover:bg-blue-700">{tier}</Badge>;
       default: return <Badge variant="secondary" className="bg-slate-200 text-slate-700 hover:bg-slate-300">{tier}</Badge>;
@@ -100,7 +69,7 @@ export default function OrganizationsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Organizations</h1>
@@ -108,7 +77,7 @@ export default function OrganizationsPage() {
             Manage your tenants and subscriptions here.
           </p>
         </div>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700">
+        <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
           <Link href="/organizations/new">
             <Plus className="mr-2 h-4 w-4" />
             New Organization
@@ -129,7 +98,7 @@ export default function OrganizationsPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             You don't belong to any organizations yet. Create one to get started.
           </p>
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
+          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
             <Link href="/organizations/new">Create Organization</Link>
           </Button>
         </Card>
@@ -158,12 +127,12 @@ export default function OrganizationsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(org)} className="cursor-pointer">
-                      Manage Settings
+                    <DropdownMenuItem className="cursor-pointer" asChild>
+                      <Link href={`/organizations/${org.id}/edit`}>Manage Settings</Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem className="cursor-pointer">Billing</DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                       onClick={() => setDeletingOrg(org)}
                     >
@@ -173,93 +142,25 @@ export default function OrganizationsPage() {
                 </DropdownMenu>
               </CardHeader>
               <CardContent className="flex-1 mt-4">
-                 <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-500 flex items-center gap-2">
-                            Tier
-                        </span>
-                        {getTierBadge(org.subscription_tier || 'Free')}
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-500 flex items-center gap-2">
-                            <Calendar className="h-4 w-4" /> Created
-                        </span>
-                        <span className="text-sm text-slate-700">{new Date(org.created_at).toLocaleDateString()}</span>
-                    </div>
-                 </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-500 flex items-center gap-2">
+                      Tier
+                    </span>
+                    {getTierBadge(org.subscription_tier || 'Free')}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-500 flex items-center gap-2">
+                      <Calendar className="h-4 w-4" /> Created
+                    </span>
+                    <span className="text-sm text-slate-700">{new Date(org.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
-
-      {/* Edit Organization Dialog */}
-      <Dialog open={!!editingOrg} onOpenChange={(open) => !open && setEditingOrg(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form onSubmit={handleEditSubmit}>
-            <DialogHeader>
-              <DialogTitle>Edit Organization</DialogTitle>
-              <DialogDescription>
-                Update the details for this organization.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-name">Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-slug">Slug</Label>
-                <Input
-                  id="edit-slug"
-                  value={editForm.slug}
-                  onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-tier">Subscription Tier</Label>
-                <Select 
-                  value={editForm.subscription_tier} 
-                  onValueChange={(val) => setEditForm({ ...editForm, subscription_tier: val })}
-                >
-                  <SelectTrigger id="edit-tier">
-                    <SelectValue placeholder="Select tier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Free">Free</SelectItem>
-                    <SelectItem value="Pro">Pro</SelectItem>
-                    <SelectItem value="Enterprise">Enterprise</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="cursor-pointer"
-                onClick={() => setEditingOrg(null)}
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting} 
-                className="cursor-pointer"
-              >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Organization Dialog */}
       <Dialog open={!!deletingOrg} onOpenChange={(open) => !open && setDeletingOrg(null)}>
@@ -271,17 +172,17 @@ export default function OrganizationsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               className="cursor-pointer"
               onClick={() => setDeletingOrg(null)}
             >
               Cancel
             </Button>
-            <Button 
-              type="button" 
-              variant="destructive" 
+            <Button
+              type="button"
+              variant="destructive"
               className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}

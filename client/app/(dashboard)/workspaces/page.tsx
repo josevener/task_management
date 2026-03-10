@@ -19,40 +19,9 @@ export default function WorkspacesPage() {
   const { workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, loading } = useWorkspace();
   const { showToast } = useToast();
 
-  const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
+  // Edit form state no longer needed here as it's extracted to a separate page
   const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', description: '', color_theme: '' });
-
-  const presetColors = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#db2777"];
-
-  const openEditDialog = (workspace: Workspace) => {
-    setEditingWorkspace(workspace);
-    setEditForm({
-      name: workspace.name,
-      description: workspace.description || '',
-      color_theme: workspace.color_theme || '#2563eb'
-    });
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingWorkspace) return;
-
-    try {
-      setIsSubmitting(true);
-      await updateWorkspace(editingWorkspace.id, editForm);
-      showToast("Workspace updated successfully", "success");
-      setEditingWorkspace(null);
-      await refreshWorkspaces();
-    }
-    catch (error: any) {
-      showToast(error.message || "Failed to update workspace", "error");
-    }
-    finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleDeleteSubmit = async () => {
     if (!deletingWorkspace) return;
@@ -88,7 +57,7 @@ export default function WorkspacesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Workspaces</h1>
@@ -96,7 +65,7 @@ export default function WorkspacesPage() {
             Manage your workspaces and navigate between different environments.
           </p>
         </div>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700">
+        <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
           <Link href="/workspaces/new">
             <Plus className="mr-2 h-4 w-4" />
             New Workspace
@@ -113,7 +82,7 @@ export default function WorkspacesPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             You don't belong to any workspaces yet. Create one to start managing projects and tasks.
           </p>
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
+          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
             <Link href="/workspaces/new">Create First Workspace</Link>
           </Button>
         </Card>
@@ -149,7 +118,7 @@ export default function WorkspacesPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-slate-600 hover:text-slate-900"
+                    className="text-slate-600 hover:text-slate-900 cursor-pointer"
                     onClick={() => switchWorkspace(workspace)}
                   >
                     Switch to
@@ -166,9 +135,9 @@ export default function WorkspacesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       className="cursor-pointer"
-                      onClick={() => openEditDialog(workspace)}
+                      asChild
                     >
-                      Edit Workspace
+                      <Link href={`/workspaces/${workspace.id}/edit`}>Edit Workspace</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -184,64 +153,6 @@ export default function WorkspacesPage() {
           ))}
         </div>
       )}
-
-      {/* Edit Workspace Dialog */}
-      <Dialog open={!!editingWorkspace} onOpenChange={(open) => !open && setEditingWorkspace(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form onSubmit={handleEditSubmit}>
-            <DialogHeader>
-              <DialogTitle>Edit Workspace</DialogTitle>
-              <DialogDescription>
-                Update the details for this workspace.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-name">Name</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  rows={3}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Color Theme</Label>
-                <div className="flex gap-2 mt-2">
-                  {presetColors.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 ${editForm.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => setEditForm({ ...editForm, color_theme: color })}
-                      aria-label={`Select color ${color}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingWorkspace(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Workspace Dialog */}
       <Dialog open={!!deletingWorkspace} onOpenChange={(open) => !open && setDeletingWorkspace(null)}>
