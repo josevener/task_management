@@ -64,7 +64,8 @@ async function apiRequest<T = unknown>(endpoint: string, options: {
     }
 
     return response.data.data as T;
-  } catch (error) {
+  }
+  catch (error) {
     if (error instanceof ApiClientError) {
       throw error;
     }

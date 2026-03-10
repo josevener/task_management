@@ -27,7 +27,7 @@ export default function RegisterPage() {
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   const { register } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
@@ -72,17 +72,21 @@ export default function RegisterPage() {
         last_name: formData.last_name,
       });
       showToast('Registration successful!', 'success');
-    } catch (error) {
+    }
+    catch (error) {
       if (error instanceof ApiClientError) {
         if (error.errors) {
           setErrors(error.errors);
-        } else {
+        }
+        else {
           showToast(error.message || 'Registration failed. Please try again.', 'error');
         }
-      } else {
+      }
+      else {
         showToast('An unexpected error occurred. Please try again.', 'error');
       }
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };

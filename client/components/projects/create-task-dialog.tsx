@@ -24,7 +24,7 @@ interface CreateTaskDialogProps {
 export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: CreateTaskDialogProps) {
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -38,9 +38,9 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
 
   useEffect(() => {
     if (isOpen && projectId) {
-        getProjectEligibleMembers(projectId)
-            .then(res => setMembers(res.members))
-            .catch(console.error);
+      getProjectEligibleMembers(projectId)
+        .then(res => setMembers(res.members))
+        .catch(console.error);
     }
   }, [isOpen, projectId]);
 
@@ -74,7 +74,7 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
 
       showToast("Task created successfully", "success");
       onTaskCreated(res.task);
-      
+
       // Reset form
       setFormData({
         title: "",
@@ -85,9 +85,11 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
         assignee_id: "",
       });
       onClose();
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to create task", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -102,7 +104,7 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
               Add a new task to your project board.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
@@ -115,7 +117,7 @@ export function CreateTaskDialog({ isOpen, onClose, projectId, onTaskCreated }: 
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea

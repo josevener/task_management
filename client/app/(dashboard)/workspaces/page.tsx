@@ -45,9 +45,11 @@ export default function WorkspacesPage() {
       showToast("Workspace updated successfully", "success");
       setEditingWorkspace(null);
       await refreshWorkspaces();
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to update workspace", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -61,16 +63,18 @@ export default function WorkspacesPage() {
       showToast("Workspace deleted successfully", "success");
       setDeletingWorkspace(null);
       await refreshWorkspaces();
-      
+
       // If we deleted the active workspace, we should clear it or switch to another
       if (activeWorkspace?.id === deletingWorkspace.id) {
-         // The context might handle this automatically on refresh, but just in case
-         // we might need a deselectWorkspace function. For now, a hard reload works too.
-         window.location.reload(); 
+        // The context might handle this automatically on refresh, but just in case
+        // we might need a deselectWorkspace function. For now, a hard reload works too.
+        window.location.reload();
       }
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to delete workspace", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -118,7 +122,7 @@ export default function WorkspacesPage() {
           {workspaces.map((workspace) => (
             <Card key={workspace.id} className={`flex flex-col ${activeWorkspace?.id === workspace.id ? 'border-blue-500 ring-1 ring-blue-500' : ''}`}>
               <CardHeader className="flex flex-row items-center gap-4">
-                <div 
+                <div
                   className="flex h-12 w-12 items-center justify-center rounded-md text-white font-bold"
                   style={{ backgroundColor: workspace.color_theme || '#2563eb' }}
                 >
@@ -142,9 +146,9 @@ export default function WorkspacesPage() {
                     Active
                   </span>
                 ) : (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="text-slate-600 hover:text-slate-900"
                     onClick={() => switchWorkspace(workspace)}
                   >
@@ -160,14 +164,14 @@ export default function WorkspacesPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="cursor-pointer"
                       onClick={() => openEditDialog(workspace)}
                     >
                       Edit Workspace
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                       onClick={() => setDeletingWorkspace(workspace)}
                     >
@@ -217,9 +221,7 @@ export default function WorkspacesPage() {
                     <button
                       key={color}
                       type="button"
-                      className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 ${
-                        editForm.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""
-                      }`}
+                      className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 ${editForm.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""}`}
                       style={{ backgroundColor: color }}
                       onClick={() => setEditForm({ ...editForm, color_theme: color })}
                       aria-label={`Select color ${color}`}
@@ -251,16 +253,16 @@ export default function WorkspacesPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               className="cursor-pointer"
               onClick={() => setDeletingWorkspace(null)}>
               Cancel
             </Button>
-            <Button 
-              type="button" 
-              variant="destructive" 
+            <Button
+              type="button"
+              variant="destructive"
               className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}

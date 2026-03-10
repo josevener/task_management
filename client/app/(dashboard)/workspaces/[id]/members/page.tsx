@@ -30,14 +30,14 @@ export default function WorkspaceMembersPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [addForm, setAddForm] = useState({ email: "", role: "member" });
-  
+
   // Create Member State
-  const [createForm, setCreateForm] = useState({ 
-    first_name: "", 
-    last_name: "", 
-    email: "", 
-    password: "", 
-    role: "member" 
+  const [createForm, setCreateForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    password: "",
+    role: "member"
   });
 
   useEffect(() => {
@@ -53,9 +53,11 @@ export default function WorkspaceMembersPage() {
       setIsRefreshing(true);
       const res = await getWorkspaceMembers(Number(id));
       setMembers(res.members);
-    } catch (err: any) {
+    }
+    catch (err: any) {
       showToast(err.message || "Failed to load members", "error");
-    } finally {
+    }
+    finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
@@ -79,9 +81,11 @@ export default function WorkspaceMembersPage() {
       setIsAddOpen(false);
       setAddForm({ email: "", role: "member" });
       fetchMembers(); // refresh list
-    } catch (err: any) {
+    }
+    catch (err: any) {
       showToast(err.message || "Failed to invite member", "error");
-    } finally {
+    }
+    finally {
       setIsAdding(false);
     }
   };
@@ -100,10 +104,10 @@ export default function WorkspaceMembersPage() {
     try {
       setIsAdding(true);
       await addWorkspaceMember(
-        Number(id), 
-        createForm.email, 
-        createForm.role, 
-        'create', 
+        Number(id),
+        createForm.email,
+        createForm.role,
+        'create',
         {
           first_name: createForm.first_name,
           last_name: createForm.last_name,
@@ -114,9 +118,11 @@ export default function WorkspaceMembersPage() {
       setIsAddOpen(false);
       setCreateForm({ first_name: "", last_name: "", email: "", password: "", role: "member" });
       fetchMembers(); // refresh list
-    } catch (err: any) {
+    }
+    catch (err: any) {
       showToast(err.message || "Failed to create member", "error");
-    } finally {
+    }
+    finally {
       setIsAdding(false);
     }
   };
@@ -128,7 +134,8 @@ export default function WorkspaceMembersPage() {
       await removeWorkspaceMember(membershipId);
       showToast("Member removed", "success");
       setMembers(prev => prev.filter(m => m.membership_id !== membershipId));
-    } catch (err: any) {
+    }
+    catch (err: any) {
       showToast(err.message || "Failed to remove member", "error");
     }
   };
@@ -142,7 +149,7 @@ export default function WorkspaceMembersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
+    <div className="flex flex-col gap-6 w-full max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
         <div>
@@ -152,7 +159,9 @@ export default function WorkspaceMembersPage() {
           </h1>
           <p className="text-slate-500 mt-1">Manage who has access to {activeWorkspace?.name}</p>
         </div>
-        <Button onClick={() => setIsAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto">
+        <Button
+          onClick={() => setIsAddOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
           <Plus className="h-4 w-4 mr-2" /> Add Member
         </Button>
       </div>
@@ -185,9 +194,9 @@ export default function WorkspaceMembersPage() {
                     <Badge variant={member.role === 'admin' ? 'default' : member.role === 'manager' ? 'secondary' : 'outline'} className="capitalize">
                       {member.role}
                     </Badge>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 cursor-pointer"
                       onClick={() => member.membership_id && handleRemoveMember(member.membership_id)}
                       title="Remove Member"
@@ -207,8 +216,8 @@ export default function WorkspaceMembersPage() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-blue-600" />
-                Add Workspace Member
+              <UserPlus className="h-5 w-5 text-blue-600" />
+              Add Workspace Member
             </DialogTitle>
             <DialogDescription>
               Invite someone who already has an account, or create a brand new user profile for them.
@@ -220,9 +229,9 @@ export default function WorkspaceMembersPage() {
               <TabsTrigger value="invite" className="cursor-pointer">Invite Existing</TabsTrigger>
               <TabsTrigger value="create" className="cursor-pointer">Create New</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="invite" className="mt-4 border rounded-md p-4">
-               <form onSubmit={handleAddMember}>
+              <form onSubmit={handleAddMember}>
                 <div className="grid gap-4 py-2">
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-medium">User Email Address</Label>
@@ -252,18 +261,18 @@ export default function WorkspaceMembersPage() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
+                  <Button
+                    type="button"
+                    variant="ghost"
                     className="cursor-pointer"
-                    onClick={() => setIsAddOpen(false)} 
+                    onClick={() => setIsAddOpen(false)}
                     disabled={isAdding}
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    type="submit" 
-                    className="bg-blue-600 hover:bg-blue-700 cursor-pointer" 
+                  <Button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
                     disabled={isAdding}
                   >
                     {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -277,26 +286,26 @@ export default function WorkspaceMembersPage() {
               <form onSubmit={handleCreateMember}>
                 <div className="grid gap-4 py-2">
                   <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="first_name" className="text-sm font-medium">First Name</Label>
-                        <Input
-                          id="first_name"
-                          value={createForm.first_name}
-                          onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
-                          placeholder="John"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="last_name" className="text-sm font-medium">Last Name</Label>
-                        <Input
-                          id="last_name"
-                          value={createForm.last_name}
-                          onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
-                          placeholder="Doe"
-                          required
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="first_name" className="text-sm font-medium">First Name</Label>
+                      <Input
+                        id="first_name"
+                        value={createForm.first_name}
+                        onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
+                        placeholder="John"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="last_name" className="text-sm font-medium">Last Name</Label>
+                      <Input
+                        id="last_name"
+                        value={createForm.last_name}
+                        onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
+                        placeholder="Doe"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -340,18 +349,18 @@ export default function WorkspaceMembersPage() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
+                  <Button
+                    type="button"
+                    variant="ghost"
                     className="cursor-pointer"
-                    onClick={() => setIsAddOpen(false)} 
+                    onClick={() => setIsAddOpen(false)}
                     disabled={isAdding}
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    type="submit" 
-                    className="bg-green-600 hover:bg-green-700 text-white cursor-pointer" 
+                  <Button
+                    type="submit"
+                    className="bg-green-600 hover:bg-green-700 text-white cursor-pointer"
                     disabled={isAdding}
                   >
                     {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

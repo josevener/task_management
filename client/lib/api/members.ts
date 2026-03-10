@@ -35,8 +35,8 @@ export async function getWorkspaceMembers(workspaceId: number): Promise<Workspac
 }
 
 export async function addWorkspaceMember(
-  workspaceId: number, 
-  email: string, 
+  workspaceId: number,
+  email: string,
   role: string = 'member',
   action: 'invite' | 'create' = 'invite',
   additionalData?: { first_name?: string; last_name?: string; password?: string }

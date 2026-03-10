@@ -33,7 +33,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       const response = await getWorkspaces();
       setWorkspaces(response.workspaces || []);
-      
+
       if (response.workspaces?.length > 0) {
         // Find if we had one saved in localStorage
         const savedId = localStorage.getItem('activeWorkspaceId');
@@ -46,12 +46,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
         // Default to first
         setActiveWorkspace(response.workspaces[0]);
-      } else {
+      }
+      else {
         setActiveWorkspace(null);
       }
-    } catch (error) {
+    }
+    catch (error) {
       console.error("Failed to fetch workspaces:", error);
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   }, [authenticated]);

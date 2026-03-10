@@ -19,7 +19,7 @@ export default function ProjectDetailsPage() {
   const params = useParams();
   const projectId = parseInt(params.id as string);
   const { activeWorkspace } = useWorkspace();
-  
+
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,21 +32,23 @@ export default function ProjectDetailsPage() {
   useEffect(() => {
     async function loadProjectData() {
       if (!activeWorkspace || isNaN(projectId)) return;
-      
+
       try {
         setLoading(true);
         const [projectRes, tasksRes] = await Promise.all([
           getProject(activeWorkspace.id, projectId),
           getTasks(projectId)
         ]);
-        
+
         setProject(projectRes.project);
         setTasks(tasksRes.tasks || []);
         setError(null);
-      } catch (err: any) {
+      }
+      catch (err: any) {
         console.error("Failed to load project details", err);
         setError("Could not load project information. Please try again.");
-      } finally {
+      }
+      finally {
         setLoading(false);
       }
     }
@@ -130,7 +132,7 @@ export default function ProjectDetailsPage() {
             </span>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Button variant="outline" className="hidden sm:flex" asChild>
             <Link href="/projects">
@@ -147,16 +149,16 @@ export default function ProjectDetailsPage() {
 
       {/* Kanban Board Container */}
       <div className="flex-1 overflow-hidden">
-        <KanbanBoard 
-            initialTasks={tasks} 
-            projectId={project.id} 
-            onTaskClick={(task) => setSelectedTask(task)}
+        <KanbanBoard
+          initialTasks={tasks}
+          projectId={project.id}
+          onTaskClick={(task) => setSelectedTask(task)}
         />
       </div>
 
-      <CreateTaskDialog 
-        isOpen={isCreateOpen} 
-        onClose={() => setIsCreateOpen(false)} 
+      <CreateTaskDialog
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
         projectId={project.id}
         onTaskCreated={handleTaskCreated}
       />

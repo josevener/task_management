@@ -2,8 +2,8 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
 import type { WorkspacesResponse, WorkspaceResponse } from '../types';
 
 export async function getWorkspaces(organizationId?: number): Promise<WorkspacesResponse> {
-  const url = organizationId 
-    ? `/workspaces/?organization_id=${organizationId}` 
+  const url = organizationId
+    ? `/workspaces/?organization_id=${organizationId}`
     : '/workspaces/';
   return apiGet<WorkspacesResponse>(url);
 }

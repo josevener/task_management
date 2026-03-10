@@ -36,10 +36,10 @@ export default function MyTasksPage() {
       // Easiest is to just filter locally if we have workspace info, but the backend doesn't return workspace ID in the Task object currently. 
       // For now, My Tasks implies "All my tasks across everything". We'll just display them all.
       setTasks(res.tasks || []);
-    } 
+    }
     catch (error) {
       console.error("Failed to load tasks", error);
-    } 
+    }
     finally {
       setLoading(false);
     }
@@ -52,8 +52,8 @@ export default function MyTasksPage() {
   // Derive filtered tasks
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            (task.description || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (task.description || "").toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || task.status === statusFilter;
 
       return matchesSearch && matchesStatus;
@@ -63,35 +63,35 @@ export default function MyTasksPage() {
   // Group tasks
   const groupedTasks = useMemo(() => {
     const groups: Record<string, Task[]> = {};
-    
+
     if (groupBy === 'status') {
       filteredTasks.forEach(task => {
         const status = task.status || 'todo';
         if (!groups[status]) groups[status] = [];
         groups[status].push(task);
       });
-    } 
+    }
     else if (groupBy === 'project') {
       filteredTasks.forEach(task => {
         const project = task.project_name || 'No Project';
         if (!groups[project]) groups[project] = [];
         groups[project].push(task);
       });
-    } 
+    }
     else if (groupBy === 'due_date') {
       filteredTasks.forEach(task => {
         let dateGroup = 'No Due Date';
         if (task.due_date) {
           const due = new Date(task.due_date);
           const today = new Date();
-          today.setHours(0,0,0,0);
-          
+          today.setHours(0, 0, 0, 0);
+
           if (due < today) {
             dateGroup = 'Overdue';
-          } 
+          }
           else if (due.getTime() === today.getTime()) {
             dateGroup = 'Today';
-          } 
+          }
           else {
             dateGroup = 'Upcoming';
           }
@@ -100,7 +100,7 @@ export default function MyTasksPage() {
         groups[dateGroup].push(task);
       });
     }
-    
+
     return groups;
   }, [filteredTasks, groupBy]);
 
@@ -108,10 +108,10 @@ export default function MyTasksPage() {
     try {
       // Optimistic update
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-      
+
       await updateTaskStatus(taskId, newStatus);
       showToast("Task status updated", "success");
-    } 
+    }
     catch (error: any) {
       showToast("Failed to update status", "error");
       fetchTasks(); // Revert on failure
@@ -130,7 +130,7 @@ export default function MyTasksPage() {
   };
 
   const getPriorityIcon = (priority: string) => {
-    switch(priority) {
+    switch (priority) {
       case 'urgent': return <span className="text-red-600 font-bold" title="Urgent">!!!</span>;
       case 'high': return <span className="text-orange-500 font-bold" title="High">!!</span>;
       case 'medium': return <span className="text-blue-500 font-bold" title="Medium">!</span>;
@@ -155,11 +155,11 @@ export default function MyTasksPage() {
     if (groupBy === 'status') {
       // Return keys sorted by our predefined array, only if they exist in `groupedTasks`
       return groupOrder['status'].filter(k => groupedTasks[k]);
-    } 
+    }
     else if (groupBy === 'due_date') {
       return groupOrder['due_date'].filter(k => groupedTasks[k]);
     }
-    
+
     // Alphabetical for generic strings like project names
     return Object.keys(groupedTasks).sort();
   };
@@ -261,7 +261,7 @@ export default function MyTasksPage() {
               <div className="grid gap-3">
                 {groupedTasks[groupKey].map(task => (
                   <div key={task.id} className="relative group bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center gap-4">
-                      
+
                     <div className="flex-shrink-0 pt-1 sm:pt-0">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -279,35 +279,35 @@ export default function MyTasksPage() {
                       </DropdownMenu>
                     </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Link href={`/projects/${task.project_id}`} className="font-medium text-slate-900 hover:text-blue-600 truncate">
-                            {task.title}
-                          </Link>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-                          <span className="flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                            {task.project_name}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Link href={`/projects/${task.project_id}`} className="font-medium text-slate-900 hover:text-blue-600 truncate">
+                          {task.title}
+                        </Link>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+                        <span className="flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                          {task.project_name}
+                        </span>
+                        {task.priority && (
+                          <span className="flex items-center gap-1 uppercase tracking-wider text-[10px]">
+                            {getPriorityIcon(task.priority)} {task.priority}
                           </span>
-                          {task.priority && (
-                            <span className="flex items-center gap-1 uppercase tracking-wider text-[10px]">
-                              {getPriorityIcon(task.priority)} {task.priority}
-                            </span>
-                          )}
-                          {task.due_date && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3.5 h-3.5" />
-                              {new Date(task.due_date).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
+                        )}
+                        {task.due_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {new Date(task.due_date).toLocaleDateString()}
+                          </span>
+                        )}
                       </div>
+                    </div>
 
-                      <div className="flex items-center gap-2 sm:ml-auto">
-                        <Badge variant="outline" className={`${getStatusColor(task.status || 'todo')} capitalize text-[10px]`}>
-                          {(task.status || 'todo').replace('_', ' ')}
-                        </Badge>
-                      </div>
+                    <div className="flex items-center gap-2 sm:ml-auto">
+                      <Badge variant="outline" className={`${getStatusColor(task.status || 'todo')} capitalize text-[10px]`}>
+                        {(task.status || 'todo').replace('_', ' ')}
+                      </Badge>
+                    </div>
                   </div>
                 ))}
               </div>

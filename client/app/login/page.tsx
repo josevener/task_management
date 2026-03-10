@@ -22,7 +22,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   const { login } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
@@ -35,17 +35,21 @@ export default function LoginPage() {
     try {
       await login({ email, password });
       showToast('Login successful!', 'success');
-    } catch (error) {
+    }
+    catch (error) {
       if (error instanceof ApiClientError) {
         if (error.errors) {
           setErrors(error.errors);
-        } else {
+        }
+        else {
           showToast(error.message || 'Login failed. Please check your credentials.', 'error');
         }
-      } else {
+      }
+      else {
         showToast('An unexpected error occurred. Please try again.', 'error');
       }
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };

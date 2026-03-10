@@ -19,7 +19,7 @@ export default function NewWorkspacePage() {
   const router = useRouter();
   const { switchWorkspace, refreshWorkspaces } = useWorkspace();
   const { showToast } = useToast();
-  
+
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loadingOrgs, setLoadingOrgs] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,13 +38,15 @@ export default function NewWorkspacePage() {
         if (res.organizations?.length > 0) {
           setFormData(prev => ({ ...prev, organization_id: res.organizations[0].id.toString() }));
         }
-      } catch (error) {
+      }
+      catch (error) {
         showToast("Failed to load organizations. Please try again.", "error");
-      } finally {
+      }
+      finally {
         setLoadingOrgs(false);
       }
     }
-    
+
     fetchOrganizations();
   }, [showToast]);
 
@@ -55,7 +57,7 @@ export default function NewWorkspacePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       showToast("Workspace name is required", "error");
       return;
@@ -76,16 +78,18 @@ export default function NewWorkspacePage() {
       });
 
       await refreshWorkspaces();
-      
+
       if (response.workspace) {
         switchWorkspace(response.workspace);
       }
 
       showToast("Workspace created successfully!", "success");
       router.push("/workspaces");
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to create workspace", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -125,7 +129,7 @@ export default function NewWorkspacePage() {
             ) : organizations.length === 0 ? (
               <div className="rounded-md bg-amber-50 p-4 border border-amber-200">
                 <p className="text-sm text-amber-800">
-                  You need to belong to an organization before creating a workspace. 
+                  You need to belong to an organization before creating a workspace.
                   Please ask your admin to invite you or create an organization first.
                 </p>
               </div>
@@ -180,9 +184,8 @@ export default function NewWorkspacePage() {
                       <button
                         key={color}
                         type="button"
-                        className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 cursor-pointer ${
-                          formData.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""
-                        }`}
+                        className={`w-8 h-8 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 cursor-pointer ${formData.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900" : ""
+                          }`}
                         style={{ backgroundColor: color }}
                         onClick={() => setFormData({ ...formData, color_theme: color })}
                         aria-label={`Select color ${color}`}
@@ -197,8 +200,8 @@ export default function NewWorkspacePage() {
             <Button variant="outline" asChild>
               <Link href="/workspaces">Cancel</Link>
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               disabled={isSubmitting || loadingOrgs || organizations.length === 0}
             >

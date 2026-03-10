@@ -52,12 +52,12 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
       <div className="p-4 border-b border-slate-800">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               className="w-full justify-between h-auto py-2 px-3 hover:bg-slate-800 hover:text-white cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div 
+                <div
                   className="w-8 h-8 rounded shrink-0 flex items-center justify-center text-white font-bold text-xs"
                   style={{ backgroundColor: activeWorkspace?.color_theme || '#2563eb' }}
                 >
@@ -79,12 +79,12 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             <DropdownMenuLabel>Your Workspaces</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {workspaces.map((workspace) => (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 key={workspace.id}
                 onClick={() => switchWorkspace(workspace)}
-                className={`${activeWorkspace?.id === workspace.id ? "bg-slate-100 dark:bg-slate-800" : "" } cursor-pointer`}
+                className={`${activeWorkspace?.id === workspace.id ? "bg-slate-100 dark:bg-slate-800" : ""} cursor-pointer`}
               >
-                <div 
+                <div
                   className="w-6 h-6 rounded mr-2 flex items-center justify-center text-white font-bold text-[10px]"
                   style={{ backgroundColor: workspace.color_theme || '#2563eb' }}
                 >

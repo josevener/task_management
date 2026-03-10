@@ -48,7 +48,8 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
       const status = task.status;
       if (newBoard[status]) {
         newBoard[status].push(task);
-      } else {
+      }
+      else {
         newBoard[status] = [task];
       }
     });
@@ -85,15 +86,16 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
     if (sourceColumnId === destColumnId) {
       sourceTasks.splice(destination.index, 0, movedTask);
       newBoardData[sourceColumnId] = sourceTasks;
-      
+
       // Update local state immediately
       setBoardData(newBoardData);
 
       // We might need an API to persist pure positional re-ordering in the same column
       try {
         await updateTaskStatus(movedTask.id, destColumnId, destination.index);
-      } catch (error) {
-         showToast("Failed to save reorder. Please refresh.", "error");
+      }
+      catch (error) {
+        showToast("Failed to save reorder. Please refresh.", "error");
       }
       return;
     }
@@ -112,7 +114,8 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
     try {
       // Fire API call in background
       await updateTaskStatus(updatedTask.id, destColumnId, destination.index);
-    } catch (error) {
+    }
+    catch (error) {
       // Revert on failure
       setBoardData(boardData);
       showToast("Failed to update task status.", "error");
@@ -124,7 +127,7 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
       <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start">
         {COLUMNS.map((col) => {
           const tasks = boardData[col.id] || [];
-          
+
           return (
             <div key={col.id} className="flex-shrink-0 w-80 flex flex-col max-h-[calc(100vh-12rem)]">
               {/* Column Header */}
@@ -134,22 +137,21 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
                   {tasks.length}
                 </span>
               </div>
-              
+
               {/* Droppable Area */}
               <Droppable droppableId={col.id}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`flex-1 rounded-lg p-3 min-h-[150px] border ${col.bg} transition-colors ${
-                      snapshot.isDraggingOver ? "ring-2 ring-blue-400 ring-inset bg-slate-50 border-dashed" : ""
-                    }`}
+                    className={`flex-1 rounded-lg p-3 min-h-[150px] border ${col.bg} transition-colors ${snapshot.isDraggingOver ? "ring-2 ring-blue-400 ring-inset bg-slate-50 border-dashed" : ""
+                      }`}
                   >
                     {tasks.map((task, index) => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        index={index} 
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        index={index}
                         onClick={() => onTaskClick?.(task)}
                       />
                     ))}

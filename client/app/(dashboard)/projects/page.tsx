@@ -33,9 +33,9 @@ export default function ProjectsPage() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState({ 
-    name: '', 
-    description: '', 
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
     status: '',
     health_status: '',
     start_date: '',
@@ -48,14 +48,16 @@ export default function ProjectsPage() {
       setLoading(false);
       return;
     }
-    
+
     try {
       setLoading(true);
       const res = await getProjects(activeWorkspace.id);
       setProjects(res.projects || []);
-    } catch (error) {
+    }
+    catch (error) {
       console.error("Failed to load projects", error);
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };
@@ -83,7 +85,7 @@ export default function ProjectsPage() {
     try {
       setIsSubmitting(true);
       const dataToSubmit: any = { ...editForm };
-      
+
       // Cleanup empty dates so backend receives null
       if (!dataToSubmit.start_date) delete dataToSubmit.start_date;
       if (!dataToSubmit.end_date) delete dataToSubmit.end_date;
@@ -92,9 +94,11 @@ export default function ProjectsPage() {
       showToast("Project updated successfully", "success");
       setEditingProject(null);
       fetchProjects();
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to update project", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -108,9 +112,11 @@ export default function ProjectsPage() {
       showToast("Project deleted successfully", "success");
       setDeletingProject(null);
       fetchProjects();
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to delete project", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -121,12 +127,12 @@ export default function ProjectsPage() {
   const filteredProjects = useMemo(() => {
     return projects.filter((project) => {
       // Search matching
-      const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            (project.description || "").toLowerCase().includes(searchQuery.toLowerCase());
-      
+      const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (project.description || "").toLowerCase().includes(searchQuery.toLowerCase());
+
       // Status matching
       const matchesStatus = statusFilter === "all" || project.status === statusFilter;
-      
+
       // Health matching
       const matchesHealth = healthFilter === "all" || project.health_status === healthFilter;
 
@@ -297,20 +303,20 @@ export default function ProjectsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem 
-                        asChild 
+                      <DropdownMenuItem
+                        asChild
                         className="cursor-pointer"
                       >
                         <Link href={`/projects/${project.id}`}>View details</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="cursor-pointer" 
+                      <DropdownMenuItem
+                        className="cursor-pointer"
                         onClick={() => openEditDialog(project)}
                       >
                         Edit project
                       </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-red-600 focus:text-red-600 cursor-pointer" 
+                      <DropdownMenuItem
+                        className="text-red-600 focus:text-red-600 cursor-pointer"
                         onClick={() => setDeletingProject(project)}
                       >
                         Delete project
@@ -323,7 +329,7 @@ export default function ProjectsPage() {
                 <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">
                   {project.description || "No description provided."}
                 </p>
-                
+
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs font-medium">
@@ -350,7 +356,7 @@ export default function ProjectsPage() {
                 </div>
               </CardContent>
             </Card>
-           ))}
+          ))}
         </div>
       )}
 
@@ -386,8 +392,8 @@ export default function ProjectsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="edit-status">Status</Label>
-                  <Select 
-                    value={editForm.status} 
+                  <Select
+                    value={editForm.status}
                     onValueChange={(val) => setEditForm({ ...editForm, status: val })}
                   >
                     <SelectTrigger id="edit-status">
@@ -403,8 +409,8 @@ export default function ProjectsPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-health">Health Status</Label>
-                  <Select 
-                    value={editForm.health_status} 
+                  <Select
+                    value={editForm.health_status}
                     onValueChange={(val) => setEditForm({ ...editForm, health_status: val })}
                   >
                     <SelectTrigger id="edit-health">
@@ -441,16 +447,16 @@ export default function ProjectsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 className="cursor-pointer"
                 onClick={() => setEditingProject(null)}
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isSubmitting}
                 className="bg-green-600 hover:bg-green-700 cursor-pointer"
               >
@@ -472,17 +478,17 @@ export default function ProjectsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               className="cursor-pointer"
               onClick={() => setDeletingProject(null)}
             >
               Cancel
             </Button>
-            <Button 
-              type="button" 
-              variant="destructive" 
+            <Button
+              type="button"
+              variant="destructive"
               className="cursor-pointer"
               onClick={handleDeleteSubmit}
               disabled={isSubmitting}

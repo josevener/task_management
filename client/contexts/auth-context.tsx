@@ -37,9 +37,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await getCurrentUser();
       setUser(response.user);
-    } catch (error) {
+    }
+    catch (error) {
       setUser(null);
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };
@@ -49,7 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiLogin(credentials);
       setUser(response.user);
       router.push('/dashboard');
-    } catch (error) {
+    }
+    catch (error) {
       throw error;
     }
   }, [router]);
@@ -59,7 +62,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiRegister(data);
       setUser(response.user);
       router.push('/dashboard');
-    } catch (error) {
+    }
+    catch (error) {
       throw error;
     }
   }, [router]);
@@ -69,7 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await apiLogout();
       setUser(null);
       router.push('/login');
-    } catch (error) {
+    }
+    catch (error) {
       // Even if logout fails, clear local state
       setUser(null);
       router.push('/login');
@@ -80,7 +85,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await getCurrentUser();
       setUser(response.user);
-    } catch (error) {
+    }
+    catch (error) {
       setUser(null);
     }
   }, []);

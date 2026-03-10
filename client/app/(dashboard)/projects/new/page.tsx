@@ -17,7 +17,7 @@ export default function NewProjectPage() {
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
   const { showToast } = useToast();
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -34,7 +34,7 @@ export default function NewProjectPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!activeWorkspace) {
       showToast("No active workspace selected.", "error");
       return;
@@ -44,12 +44,12 @@ export default function NewProjectPage() {
       showToast("Project name is required", "error");
       return;
     }
-    
+
     if (formData.start_date && formData.end_date) {
-        if (new Date(formData.start_date) > new Date(formData.end_date)) {
-            showToast("Start date cannot be after end date", "error");
-            return;
-        }
+      if (new Date(formData.start_date) > new Date(formData.end_date)) {
+        showToast("Start date cannot be after end date", "error");
+        return;
+      }
     }
 
     try {
@@ -65,9 +65,11 @@ export default function NewProjectPage() {
 
       showToast("Project created successfully!", "success");
       router.push("/projects");
-    } catch (error: any) {
+    }
+    catch (error: any) {
       showToast(error.message || "Failed to create project", "error");
-    } finally {
+    }
+    finally {
       setIsSubmitting(false);
     }
   };
@@ -155,7 +157,7 @@ export default function NewProjectPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div className="space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="start_date">Start Date</Label>
                 <div className="relative">
                   <Input
@@ -168,9 +170,9 @@ export default function NewProjectPage() {
                   />
                   <CalendarIcon className="absolute left-3 top-2.5 h-4 w-4 text-slate-500 pointer-events-none" />
                 </div>
-               </div>
+              </div>
 
-               <div className="space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="end_date">Target End Date</Label>
                 <div className="relative">
                   <Input
@@ -183,7 +185,7 @@ export default function NewProjectPage() {
                   />
                   <CalendarIcon className="absolute left-3 top-2.5 h-4 w-4 text-slate-500 pointer-events-none" />
                 </div>
-               </div>
+              </div>
             </div>
 
           </CardContent>
@@ -191,8 +193,8 @@ export default function NewProjectPage() {
             <Button variant="outline" asChild>
               <Link href="/projects">Cancel</Link>
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               disabled={isSubmitting}
             >

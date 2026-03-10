@@ -44,12 +44,12 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
           style={{
             ...provided.draggableProps.style,
             // Slightly rotate when dragging for a nice effect
-            transform: snapshot.isDragging 
-              ? `${provided.draggableProps.style?.transform} rotate(2deg)` 
+            transform: snapshot.isDragging
+              ? `${provided.draggableProps.style?.transform} rotate(2deg)`
               : provided.draggableProps.style?.transform,
           }}
         >
-          <Card 
+          <Card
             className={`shadow-sm border border-slate-200 cursor-pointer ${snapshot.isDragging ? 'shadow-lg ring-1 ring-blue-500' : 'hover:border-slate-300 hover:shadow-md'}`}
             onClick={onClick}
           >
@@ -68,8 +68,8 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
               {task.tags && task.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {task.tags.map(tag => (
-                    <span 
-                      key={tag.id} 
+                    <span
+                      key={tag.id}
                       className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                       style={{ backgroundColor: `${tag.color}20`, color: tag.color }}
                     >
