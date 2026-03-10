@@ -5,6 +5,10 @@ export async function getProjects(workspaceId: number): Promise<ProjectsResponse
   return apiGet<ProjectsResponse>(`/projects/?workspace_id=${workspaceId}`);
 }
 
+export async function getAllProjects(): Promise<ProjectsResponse> {
+  return apiGet<ProjectsResponse>(`/projects/`);
+}
+
 export async function getProject(workspaceId: number, projectId: number): Promise<ProjectResponse> {
   return apiGet<ProjectResponse>(`/projects/${projectId}`);
 }
