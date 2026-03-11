@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useWorkspace } from "@/contexts/workspace-context";
-import { getWorkspaceMembers, addWorkspaceMember, removeWorkspaceMember, WorkspaceMember } from "@/lib/api/members";
+import { apiGet } from "@/lib/api-client";
+import { getWorkspaceMembers, addWorkspaceMember, removeWorkspaceMember, updateWorkspaceMember, WorkspaceMember } from "@/lib/api/members";
 import { useToast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,16 +14,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Plus, Loader2, Users } from "lucide-react";
+import { Trash2, Plus, Loader2, Users, Edit2 } from "lucide-react";
 import Link from "next/link";
 
 export default function WorkspaceMembersPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { activeWorkspace, loading: wsLoading } = useWorkspace();
+  const { activeWorkspace, loading: wsLoading, hasPermission } = useWorkspace();
   const { showToast } = useToast();
 
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<number | null>(null);
@@ -39,8 +41,12 @@ export default function WorkspaceMembersPage() {
     if (!id) return;
     try {
       setIsRefreshing(true);
-      const res = await getWorkspaceMembers(Number(id));
-      setMembers(res.members);
+      const [membersRes, rolesRes] = await Promise.all([
+        getWorkspaceMembers(Number(id)),
+        apiGet<any>(`/workspaces/${id}/roles`)
+      ]);
+      setMembers(membersRes.members);
+      setRoles(rolesRes.roles || []);
     }
     catch (err: any) {
       showToast(err.message || "Failed to load members", "error");
@@ -96,13 +102,15 @@ export default function WorkspaceMembersPage() {
           </h1>
           <p className="text-slate-500 mt-1">Manage who has access to {activeWorkspace?.name}</p>
         </div>
-        <Button
-          asChild
-          className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
-          <Link href={`/workspaces/${id}/members/new`}>
-            <Plus className="h-4 w-4 mr-2" /> Add Member
-          </Link>
-        </Button>
+        {hasPermission('members:invite') && (
+          <Button
+            asChild
+            className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
+            <Link href={`/workspaces/${id}/members/new`}>
+              <Plus className="h-4 w-4 mr-2" /> Add Member
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* Main Content */}
@@ -130,18 +138,33 @@ export default function WorkspaceMembersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <Badge variant={member.role === 'admin' ? 'default' : member.role === 'manager' ? 'secondary' : 'outline'} className="capitalize">
-                      {member.role}
+                    <Badge variant={member.role?.toLowerCase() === 'admin' ? 'default' : 'outline'} className="capitalize">
+                      {member.role || 'Member'}
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 cursor-pointer"
-                      onClick={() => member.membership_id && setMemberToRemove(member.membership_id)}
-                      title="Remove Member"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {hasPermission('members:manage_roles') && member.membership_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 h-8 w-8 cursor-pointer"
+                        title="Edit Member"
+                        asChild
+                      >
+                        <Link href={`/workspaces/${id}/members/${member.membership_id}/edit`}>
+                          <Edit2 className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    )}
+                    {hasPermission('members:remove') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 cursor-pointer"
+                        onClick={() => member.membership_id && setMemberToRemove(member.membership_id)}
+                        title="Remove Member"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))

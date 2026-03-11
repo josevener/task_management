@@ -126,6 +126,6 @@ export async function apiPatch<T = unknown>(
 /**
  * DELETE request
  */
-export async function apiDelete<T = unknown>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, { method: 'DELETE' });
+export async function apiDelete<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'DELETE', data });
 }

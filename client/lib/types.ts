@@ -37,6 +37,7 @@ export interface Workspace {
   updated_at?: string;
   organization_name?: string;
   user_role?: string;
+  user_permissions?: string[];
 }
 
 // Project types
@@ -124,6 +125,7 @@ export interface WorkspacesResponse {
 
 export interface WorkspaceResponse {
   workspace: Workspace;
+  user_permissions?: string[];
 }
 
 export interface ProjectsResponse {
@@ -140,4 +142,34 @@ export interface TasksResponse {
 
 export interface TaskResponse {
   task: Task;
+}
+
+// Role and Permission types
+export interface Permission {
+  id: number;
+  module: string;
+  action: string;
+  description: string;
+}
+
+export interface Role {
+  id: number;
+  workspace_id: number;
+  name: string;
+  description: string | null;
+  is_system_role: boolean;
+  default_user_count?: number;
+}
+
+// API response types for Roles
+export interface RolesResponse {
+  roles: Role[];
+}
+
+export interface RoleResponse {
+  role: Role;
+}
+
+export interface PermissionsResponse {
+  permissions: Permission[];
 }

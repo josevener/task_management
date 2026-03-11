@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { useAuth } from "@/contexts/auth-context";
 import { getProjects, updateProject, deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/lib/toast";
 
 export default function ProjectsPage() {
-  const { activeWorkspace } = useWorkspace();
+  const { activeWorkspace, hasPermission } = useWorkspace();
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
@@ -147,12 +149,14 @@ export default function ProjectsPage() {
             Manage projects for <span className="font-semibold">{activeWorkspace.name}</span>
           </p>
         </div>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700 shrink-0 cursor-pointer">
-          <Link href="/projects/new">
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Link>
-        </Button>
+        {hasPermission('projects:create') && (
+          <Button asChild className="bg-blue-600 hover:bg-blue-700 shrink-0 cursor-pointer">
+            <Link href="/projects/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -213,9 +217,11 @@ export default function ProjectsPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             Get started by creating your first project in this workspace.
           </p>
-          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
-            <Link href="/projects/new">Create First Project</Link>
-          </Button>
+          {hasPermission('projects:create') && (
+            <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
+              <Link href="/projects/new">Create First Project</Link>
+            </Button>
+          )}
         </Card>
       ) : filteredProjects.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed bg-slate-50">
@@ -232,7 +238,11 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredProjects.map((project) => (
+          {filteredProjects.map((project) => {
+            const canEditProject = project.owner_id === user?.id || hasPermission('projects:edit');
+            const canDeleteProject = project.owner_id === user?.id || hasPermission('projects:delete');
+            
+            return (
             <Card key={project.id} className="flex flex-col hover:shadow-md transition-shadow">
               {/* Existing Card Content mapped over filteredProjects */}
               <CardHeader className="pb-3">
@@ -263,18 +273,22 @@ export default function ProjectsPage() {
                       >
                         <Link href={`/projects/${project.id}`}>View details</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="cursor-pointer"
-                        asChild
-                      >
-                        <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-600 focus:text-red-600 cursor-pointer"
-                        onClick={() => setDeletingProject(project)}
-                      >
-                        Delete project
-                      </DropdownMenuItem>
+                      {canEditProject && (
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          asChild
+                        >
+                          <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
+                        </DropdownMenuItem>
+                      )}
+                      {canDeleteProject && (
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600 cursor-pointer"
+                          onClick={() => setDeletingProject(project)}
+                        >
+                          Delete project
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -310,7 +324,8 @@ export default function ProjectsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -10,7 +10,8 @@ import {
   ChevronDown,
   Plus,
   Building2,
-  Users
+  Users,
+  ShieldAlert
 } from "lucide-react";
 import { useWorkspace } from "@/contexts/workspace-context";
 import {
@@ -30,17 +31,20 @@ interface SidebarProps {
 
 export function Sidebar({ className, onNavigate }: SidebarProps) {
   const pathname = usePathname();
-  const { workspaces, activeWorkspace, switchWorkspace, loading } = useWorkspace();
+  const { workspaces, activeWorkspace, switchWorkspace, loading, hasPermission } = useWorkspace();
 
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Workspaces", href: "/workspaces", icon: Briefcase },
-    ...(activeWorkspace ? [{ name: "Team", href: `/workspaces/${activeWorkspace.id}/members`, icon: Users }] : []),
-    { name: "Projects", href: "/projects", icon: FolderKanban },
-    { name: "My Tasks", href: "/tasks", icon: CheckSquare },
-    { name: "Organizations", href: "/organizations", icon: Building2 },
-    { name: "Settings", href: "/settings", icon: Settings },
-  ];
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, show: hasPermission('dashboard:view') },
+    { name: "Workspaces", href: "/workspaces", icon: Briefcase, show: hasPermission('workspaces:view') },
+    ...(activeWorkspace ? [
+      { name: "Team", href: `/workspaces/${activeWorkspace.id}/members`, icon: Users, show: hasPermission('members:view') },
+      { name: "Roles & Permissions", href: `/workspaces/${activeWorkspace.id}/roles`, icon: ShieldAlert, show: hasPermission('roles:view') || hasPermission('roles:edit') || activeWorkspace.user_role === 'Admin' }
+    ] : []),
+    { name: "Projects", href: "/projects", icon: FolderKanban, show: hasPermission('projects:view') },
+    { name: "My Tasks", href: "/tasks", icon: CheckSquare, show: hasPermission('tasks:view') },
+    { name: "Organizations", href: "/organizations", icon: Building2, show: hasPermission('organizations:view') },
+    { name: "Settings", href: "/settings", icon: Settings, show: hasPermission('settings:view') },
+  ].filter(item => item.show);
 
   return (
     <div

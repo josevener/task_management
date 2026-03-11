@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { query, withTransaction } = require('../config/database');
-const { attachCurrentUser, requireAuth } = require('../middleware/auth');
+const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { buildUpdateClause, isValidDate } = require('../utils/validation');
@@ -173,8 +173,15 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   `, [project_id, req.currentUser.id]) : [];
 
   const project = projectRows[0];
-  if (project_id && !project) {
-    errors.project_id = 'Project access denied';
+  if (project_id) {
+    if (!project) {
+      errors.project_id = 'Project access denied';
+    } else {
+      const canCreate = await checkPermission(project.workspace_id, req.currentUser.id, 'tasks:create');
+      if (!canCreate) {
+        errors.project_id = 'You do not have permission to create tasks in this workspace';
+      }
+    }
   }
 
   if (parent_task_id) {
@@ -288,6 +295,11 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   const existingTask = taskRows[0];
   if (!existingTask) {
     return sendError(res, 'Task not found or access denied', 404);
+  }
+
+  const canEdit = await checkPermission(existingTask.workspace_id, req.currentUser.id, 'tasks:edit');
+  if (!canEdit && Number(existingTask.assignee_id) !== Number(req.currentUser.id)) {
+    return sendError(res, 'You do not have permission to edit this task', 403);
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title')) {
@@ -424,6 +436,11 @@ tasksRouter.delete('/:id', asyncHandler(async (req, res) => {
   const task = rows[0];
   if (!task) {
     return sendError(res, 'Task not found or access denied', 404);
+  }
+
+  const canDelete = await checkPermission(task.workspace_id, req.currentUser.id, 'tasks:delete');
+  if (!canDelete) {
+    return sendError(res, 'You do not have permission to delete this task', 403);
   }
 
   const subtaskRows = await query('SELECT COUNT(*) AS count FROM tasks WHERE parent_task_id = ?', [req.params.id]);

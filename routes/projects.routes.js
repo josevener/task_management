@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { query, withTransaction } = require('../config/database');
-const { attachCurrentUser, requireAuth } = require('../middleware/auth');
+const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { buildUpdateClause, isValidDate } = require('../utils/validation');
@@ -105,12 +105,16 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
     errors.end_date = 'End date must be after start date';
   }
 
-  const memberRows = workspace_id ? await query(`
-    SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-  `, [workspace_id, req.currentUser.id]) : [];
-
-  if (workspace_id && !memberRows[0]) {
-    errors.workspace_id = 'Workspace access denied';
+  if (workspace_id) {
+    const isMember = await query('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [workspace_id, req.currentUser.id]);
+    if (!isMember[0]) {
+      errors.workspace_id = 'Workspace access denied';
+    } else {
+      const canCreate = await checkPermission(workspace_id, req.currentUser.id, 'projects:create');
+      if (!canCreate) {
+        errors.workspace_id = 'You do not have permission to create projects';
+      }
+    }
   }
 
   if (Object.keys(errors).length > 0) {
@@ -161,21 +165,20 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
 
 projectsRouter.patch('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
-    SELECT p.id, p.workspace_id, pm.role AS project_role, wm.role AS workspace_role
+    SELECT p.id, p.workspace_id, pm.role AS project_role
     FROM projects p
     LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = ?
     WHERE p.id = ?
     LIMIT 1
-  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
+  `, [req.currentUser.id, req.params.id]);
 
   const existingProject = rows[0];
   if (!existingProject) {
-    return sendError(res, 'Project not found or access denied', 404);
+    return sendError(res, 'Project not found', 404);
   }
 
-  const canEdit = existingProject.project_role === 'owner' || ['admin', 'manager'].includes(existingProject.workspace_role);
+  const canEditWorkspace = await checkPermission(existingProject.workspace_id, req.currentUser.id, 'projects:edit');
+  const canEdit = existingProject.project_role === 'owner' || canEditWorkspace;
   if (!canEdit) {
     return sendError(res, 'You do not have permission to edit this project', 403);
   }
@@ -214,21 +217,20 @@ projectsRouter.patch('/:id', asyncHandler(async (req, res) => {
 
 projectsRouter.delete('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
-    SELECT p.id, p.workspace_id, pm.role AS project_role, wm.role AS workspace_role
+    SELECT p.id, p.workspace_id, pm.role AS project_role
     FROM projects p
     LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = ?
     WHERE p.id = ?
     LIMIT 1
-  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
+  `, [req.currentUser.id, req.params.id]);
 
   const existingProject = rows[0];
   if (!existingProject) {
-    return sendError(res, 'Project not found or access denied', 404);
+    return sendError(res, 'Project not found', 404);
   }
 
-  const canDelete = existingProject.project_role === 'owner' || existingProject.workspace_role === 'admin';
+  const canDeleteWorkspace = await checkPermission(existingProject.workspace_id, req.currentUser.id, 'projects:delete');
+  const canDelete = existingProject.project_role === 'owner' || canDeleteWorkspace;
   if (!canDelete) {
     return sendError(res, 'You do not have permission to delete this project', 403);
   }

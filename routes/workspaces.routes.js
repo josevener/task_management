@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 
 const { query, withTransaction } = require('../config/database');
-const { attachCurrentUser, requireAuth } = require('../middleware/auth');
+const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
@@ -38,10 +38,11 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT w.id, w.organization_id, w.name, w.slug, w.description,
            w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           o.name AS organization_name, wm.role AS user_role
+           o.name AS organization_name, r.name AS user_role, r.id AS user_role_id, r.is_system_role
     FROM workspaces w
     INNER JOIN organizations o ON o.id = w.organization_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    LEFT JOIN roles r ON r.id = wm.role_id
     WHERE w.id = ? AND wm.user_id = ? AND w.is_active = TRUE
     LIMIT 1
   `, [req.params.id, req.currentUser.id]);
@@ -49,8 +50,25 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
   if (!rows[0]) {
     return sendError(res, 'Workspace not found or access denied', 404);
   }
+  
+  const workspace = rows[0];
+  let permissions = [];
+  
+  if (workspace.user_role_id) {
+    const permRows = await query(`
+      SELECT p.action
+      FROM role_permissions rp
+      JOIN permissions p ON p.id = rp.permission_id
+      WHERE rp.role_id = ?
+    `, [workspace.user_role_id]);
+    
+    permissions = permRows.map(p => p.action);
+  }
 
-  return sendSuccess(res, { workspace: rows[0] });
+  return sendSuccess(res, { 
+    workspace,
+    user_permissions: permissions
+  });
 }));
 
 workspacesRouter.post('/', asyncHandler(async (req, res) => {
@@ -125,17 +143,22 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
 }));
 
 workspacesRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const permissionRows = await query(`
+  const isMember = await query(`
     SELECT w.id, w.organization_id
     FROM workspaces w
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE w.id = ? AND wm.user_id = ? AND wm.role IN ('admin', 'manager')
+    WHERE w.id = ? AND wm.user_id = ?
     LIMIT 1
   `, [req.params.id, req.currentUser.id]);
 
-  const existingWorkspace = permissionRows[0];
+  const existingWorkspace = isMember[0];
   if (!existingWorkspace) {
-    return sendError(res, 'Workspace not found or you do not have permission to edit it', 404);
+    return sendError(res, 'Workspace not found or access denied', 404);
+  }
+
+  const canEdit = await checkPermission(req.params.id, req.currentUser.id, 'workspaces:edit');
+  if (!canEdit) {
+    return sendError(res, 'You do not have permission to edit this workspace', 403);
   }
 
   const input = { ...req.body };
@@ -175,16 +198,21 @@ workspacesRouter.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 workspacesRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const permissionRows = await query(`
+  const isMember = await query(`
     SELECT w.id
     FROM workspaces w
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE w.id = ? AND wm.user_id = ? AND wm.role = 'admin'
+    WHERE w.id = ? AND wm.user_id = ?
     LIMIT 1
   `, [req.params.id, req.currentUser.id]);
 
-  if (!permissionRows[0]) {
-    return sendError(res, 'Workspace not found or you do not have permission to delete it', 404);
+  if (!isMember[0]) {
+    return sendError(res, 'Workspace not found or access denied', 404);
+  }
+
+  const canDelete = await checkPermission(req.params.id, req.currentUser.id, 'workspaces:delete');
+  if (!canDelete) {
+    return sendError(res, 'You do not have permission to delete this workspace', 403);
   }
 
   await query('DELETE FROM workspaces WHERE id = ?', [req.params.id]);
@@ -201,10 +229,11 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
   }
 
   const members = await query(`
-    SELECT wm.id AS membership_id, wm.role, wm.created_at,
+    SELECT wm.id AS membership_id, r.name AS role, wm.created_at,
            u.id AS user_id, u.first_name, u.last_name, u.email
     FROM workspace_members wm
     INNER JOIN users u ON u.id = wm.user_id
+    LEFT JOIN roles r ON r.id = wm.role_id
     WHERE wm.workspace_id = ?
     ORDER BY wm.created_at ASC
   `, [req.params.workspaceId]);
@@ -223,15 +252,9 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
   }
-  if (!['admin', 'manager', 'member', 'guest'].includes(role)) {
-    errors.role = 'Invalid role. Must be one of: admin, manager, member, guest';
-  }
 
-  const permissionRows = await query(`
-    SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-  `, [req.params.workspaceId, req.currentUser.id]);
-
-  if (!permissionRows[0] || !['admin', 'manager'].includes(permissionRows[0].role)) {
+  const canInvite = await checkPermission(req.params.workspaceId, req.currentUser.id, 'members:invite');
+  if (!canInvite) {
     errors.workspace_id = 'You do not have permission to add members to this workspace';
   }
 
@@ -292,15 +315,16 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     }
 
     const [membershipResult] = await connection.execute(`
-      INSERT INTO workspace_members (workspace_id, user_id, role)
-      VALUES (?, ?, ?)
-    `, [req.params.workspaceId, user_id_to_add, role]);
+      INSERT INTO workspace_members (workspace_id, user_id, role_id)
+      VALUES (?, ?, (SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?) LIMIT 1))
+    `, [req.params.workspaceId, user_id_to_add, req.params.workspaceId, role]);
 
     const [rows] = await connection.execute(`
-      SELECT wm.id AS membership_id, wm.role, wm.created_at,
+      SELECT wm.id AS membership_id, r.name AS role, wm.created_at,
              u.id AS user_id, u.first_name, u.last_name, u.email
       FROM workspace_members wm
       INNER JOIN users u ON u.id = wm.user_id
+      LEFT JOIN roles r ON r.id = wm.role_id
       WHERE wm.id = ?
     `, [membershipResult.insertId]);
 
@@ -322,9 +346,85 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
   return sendSuccess(res, { member }, 201);
 }));
 
+workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => {
+  const { role_id, first_name, last_name, email } = req.body;
+
+  const targetRows = await query(`
+    SELECT wm.workspace_id, wm.user_id, r.name AS role_name, r.is_system_role 
+    FROM workspace_members wm 
+    LEFT JOIN roles r ON r.id = wm.role_id
+    WHERE wm.id = ?
+  `, [req.params.membershipId]);
+
+  const targetMember = targetRows[0];
+  if (!targetMember) {
+    return sendError(res, 'Membership not found', 404);
+  }
+
+  const canManageRoles = await checkPermission(targetMember.workspace_id, req.currentUser.id, 'members:manage_roles');
+  if (!canManageRoles) {
+    return sendError(res, 'You do not have permission to edit member details in this workspace', 403);
+  }
+
+  const errors = {};
+
+  // Check role update logic
+  if (role_id) {
+    const newRoleRows = await query('SELECT name FROM roles WHERE id = ?', [role_id]);
+    if (!newRoleRows[0]) {
+      errors.role_id = 'The selected role does not exist';
+    } else if (targetMember.role_name === 'Admin' && newRoleRows[0].name !== 'Admin') {
+      const adminRows = await query(`
+        SELECT COUNT(*) AS admin_count
+        FROM workspace_members wm
+        JOIN roles r ON r.id = wm.role_id
+        WHERE wm.workspace_id = ? AND r.name = 'Admin' AND wm.user_id != ?
+      `, [targetMember.workspace_id, targetMember.user_id]);
+
+      if (Number(adminRows[0].admin_count) === 0) {
+        errors.role_id = 'Cannot demote the last administrator. Promote someone else first.';
+      }
+    }
+  }
+
+  // Check email uniqueness if email is being updated
+  if (email && String(email).trim()) {
+    const existingEmailRows = await query('SELECT id FROM users WHERE email = ? AND id != ?', [email, targetMember.user_id]);
+    if (existingEmailRows.length > 0) {
+      errors.email = 'This email is already taken by another user';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return sendValidationError(res, errors);
+  }
+
+  await withTransaction(async (connection) => {
+    if (role_id) {
+      await connection.execute('UPDATE workspace_members SET role_id = ? WHERE id = ?', [role_id, req.params.membershipId]);
+    }
+
+    if (first_name || last_name || email) {
+      const updates = [];
+      const params = [];
+      if (first_name) { updates.push('first_name = ?'); params.push(String(first_name).trim()); }
+      if (last_name) { updates.push('last_name = ?'); params.push(String(last_name).trim()); }
+      if (email) { updates.push('email = ?'); params.push(String(email).trim()); }
+      
+      params.push(targetMember.user_id);
+      await connection.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+    }
+  });
+  
+  return sendSuccess(res, { message: 'Member details updated successfully' });
+}));
+
 workspacesRouter.delete('/members/:membershipId', asyncHandler(async (req, res) => {
   const targetRows = await query(`
-    SELECT workspace_id, user_id, role FROM workspace_members WHERE id = ?
+    SELECT wm.workspace_id, wm.user_id, r.name AS role_name, r.is_system_role 
+    FROM workspace_members wm 
+    LEFT JOIN roles r ON r.id = wm.role_id
+    WHERE wm.id = ?
   `, [req.params.membershipId]);
 
   const targetMember = targetRows[0];
@@ -333,20 +433,19 @@ workspacesRouter.delete('/members/:membershipId', asyncHandler(async (req, res) 
   }
 
   if (Number(targetMember.user_id) !== Number(req.currentUser.id)) {
-    const permissionRows = await query(`
-      SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-    `, [targetMember.workspace_id, req.currentUser.id]);
+    const canRemove = await checkPermission(targetMember.workspace_id, req.currentUser.id, 'members:remove');
 
-    if (!permissionRows[0] || !['admin', 'manager'].includes(permissionRows[0].role)) {
+    if (!canRemove) {
       return sendError(res, 'You do not have permission to remove members from this workspace', 403);
     }
   }
 
-  if (targetMember.role === 'admin') {
+  if (targetMember.role_name === 'Admin') {
     const adminRows = await query(`
       SELECT COUNT(*) AS admin_count
-      FROM workspace_members
-      WHERE workspace_id = ? AND role = 'admin'
+      FROM workspace_members wm
+      JOIN roles r ON r.id = wm.role_id
+      WHERE wm.workspace_id = ? AND r.name = 'Admin'
     `, [targetMember.workspace_id]);
 
     if (Number(adminRows[0].admin_count) <= 1) {

@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/lib/toast";
 
 export default function WorkspacesPage() {
-  const { workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, loading } = useWorkspace();
+  const { workspaces, activeWorkspace, switchWorkspace, refreshWorkspaces, loading, hasPermission } = useWorkspace();
   const { showToast } = useToast();
 
   // Edit form state no longer needed here as it's extracted to a separate page
@@ -65,12 +65,14 @@ export default function WorkspacesPage() {
             Manage your workspaces and navigate between different environments.
           </p>
         </div>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
-          <Link href="/workspaces/new">
-            <Plus className="mr-2 h-4 w-4" />
-            New Workspace
-          </Link>
-        </Button>
+        {hasPermission('workspaces:create') && (
+          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
+            <Link href="/workspaces/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Workspace
+            </Link>
+          </Button>
+        )}
       </div>
 
       {workspaces.length === 0 ? (
@@ -82,9 +84,11 @@ export default function WorkspacesPage() {
           <p className="mt-2 text-sm text-slate-500 max-w-sm mb-6">
             You don't belong to any workspaces yet. Create one to start managing projects and tasks.
           </p>
-          <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
-            <Link href="/workspaces/new">Create First Workspace</Link>
-          </Button>
+          {hasPermission('workspaces:create') && (
+            <Button asChild className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
+              <Link href="/workspaces/new">Create First Workspace</Link>
+            </Button>
+          )}
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -125,29 +129,35 @@ export default function WorkspacesPage() {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>
                 )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 cursor-pointer">
-                      <span className="sr-only">Workspace settings</span>
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      asChild
-                    >
-                      <Link href={`/workspaces/${workspace.id}/edit`}>Edit Workspace</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
-                      onClick={() => setDeletingWorkspace(workspace)}
-                    >
-                      Delete Workspace
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {(hasPermission('workspaces:edit') || hasPermission('workspaces:delete')) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 cursor-pointer">
+                        <span className="sr-only">Workspace settings</span>
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {hasPermission('workspaces:edit') && (
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          asChild
+                        >
+                          <Link href={`/workspaces/${workspace.id}/edit`}>Edit Workspace</Link>
+                        </DropdownMenuItem>
+                      )}
+                      {hasPermission('workspaces:edit') && hasPermission('workspaces:delete') && <DropdownMenuSeparator />}
+                      {hasPermission('workspaces:delete') && (
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                          onClick={() => setDeletingWorkspace(workspace)}
+                        >
+                          Delete Workspace
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </CardFooter>
             </Card>
           ))}

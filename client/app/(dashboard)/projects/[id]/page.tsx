@@ -17,7 +17,7 @@ export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = parseInt(params.id as string);
-  const { activeWorkspace } = useWorkspace();
+  const { activeWorkspace, hasPermission } = useWorkspace();
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -122,12 +122,14 @@ export default function ProjectDetailsPage() {
               Projects
             </Link>
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 cursor-pointer" asChild>
-            <Link href={`/projects/${project.id}/tasks/new`}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Task
-            </Link>
-          </Button>
+          {hasPermission('tasks:create') && (
+            <Button className="bg-blue-600 hover:bg-blue-700 cursor-pointer" asChild>
+              <Link href={`/projects/${project.id}/tasks/new`}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Task
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 

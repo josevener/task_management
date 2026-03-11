@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiDelete } from '../api-client';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api-client';
 
 export interface WorkspaceMember {
   membership_id?: number;
@@ -47,6 +47,10 @@ export async function addWorkspaceMember(
     action,
     ...additionalData
   });
+}
+
+export async function updateWorkspaceMember(membershipId: number, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
+  return apiPut<{ message: string }>(`/workspaces/members/${membershipId}`, data);
 }
 
 export async function removeWorkspaceMember(membershipId: number): Promise<{ message: string }> {

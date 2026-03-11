@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { useWorkspace } from "@/contexts/workspace-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { useToast } from "@/lib/toast";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { hasPermission } = useWorkspace();
   const { showToast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -230,7 +232,7 @@ export default function DashboardPage() {
               </div>
             )}
           </CardContent>
-          {recentProjects.length > 0 && (
+          {recentProjects.length > 0 && hasPermission('projects:create') && (
             <CardFooter className="p-4 border-t bg-slate-50 mt-auto">
               <Button asChild className="w-full bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 cursor-pointer shadow-sm">
                 <Link href="/projects/new">
