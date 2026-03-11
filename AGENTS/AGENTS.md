@@ -397,7 +397,8 @@ task_management/
       try {
         // Logic
         res.status(200).json({ success: true, data: result });
-      } catch (error) {
+      } 
+      catch (error) {
         console.error(error);
         res.status(500).json({ error_message: error.message });
       }
