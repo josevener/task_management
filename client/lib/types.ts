@@ -88,6 +88,9 @@ export interface Task {
   creator_first_name?: string;
   creator_last_name?: string;
   creator_email?: string;
+  assigned_by?: number;
+  assigner_first_name?: string;
+  assigner_last_name?: string;
   project_name?: string;
   tags?: TaskTag[];
 }

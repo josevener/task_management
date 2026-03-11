@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev:client": "cd ../client && npm run dev",
+    "dev:server": "node server.js",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "start": "node server.js",
     "migrate": "db-migrate up",
     "migrate:down": "db-migrate down",
@@ -12,6 +14,7 @@
   "dependencies": {
     "axios": "^1.8.4",
     "bcryptjs": "^2.4.3",
+    "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "db-migrate": "^0.11.14",
     "db-migrate-mysql": "^3.0.0",

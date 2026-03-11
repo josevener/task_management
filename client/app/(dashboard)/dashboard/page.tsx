@@ -310,6 +310,15 @@ export default function DashboardPage() {
                               {isOverdue && ' (Overdue)'}
                             </span>
                           )}
+                          {task.assigner_first_name ? (
+                            <span className="text-[11px] text-slate-400">
+                              • Assigned by {task.assigned_by === task.assignee_id ? "Me" : `${task.assigner_first_name} ${task.assigner_last_name ? task.assigner_last_name[0] + '.' : ''}`}
+                            </span>
+                          ) : task.creator_first_name ? (
+                            <span className="text-[11px] text-slate-400">
+                              • Created by {task.creator_first_name} {task.creator_last_name ? task.creator_last_name[0] + '.' : ''}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </Link>

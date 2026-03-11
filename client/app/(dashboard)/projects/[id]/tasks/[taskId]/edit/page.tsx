@@ -35,6 +35,11 @@ export default function EditTaskPage() {
     priority: "",
     due_date: "",
     assignee_id: "" as string | number,
+    assigned_by: undefined as number | undefined,
+    assigner_first_name: "" as string | undefined,
+    assigner_last_name: "" as string | undefined,
+    creator_first_name: "" as string | undefined,
+    creator_last_name: "" as string | undefined,
   });
 
   useEffect(() => {
@@ -55,7 +60,12 @@ export default function EditTaskPage() {
           status: task.status,
           priority: task.priority,
           due_date: task.due_date ? task.due_date.split('T')[0] : "",
-          assignee_id: task.assignee_id ? String(task.assignee_id) : "none"
+          assignee_id: task.assignee_id ? String(task.assignee_id) : "none",
+          assigned_by: task.assigned_by,
+          assigner_first_name: task.assigner_first_name,
+          assigner_last_name: task.assigner_last_name,
+          creator_first_name: task.creator_first_name,
+          creator_last_name: task.creator_last_name,
         });
       }
       catch (error) {
@@ -164,6 +174,18 @@ export default function EditTaskPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4">
+              {formData.assigner_first_name ? (
+                <div className="text-sm text-slate-500 bg-slate-50 p-3 rounded-md border border-slate-100 flex items-center gap-2">
+                  <span className="font-medium text-slate-700">Assigned by:</span>
+                  {formData.assigned_by === Number(formData.assignee_id) ? "Me" : `${formData.assigner_first_name} ${formData.assigner_last_name}`}
+                </div>
+              ) : formData.creator_first_name ? (
+                <div className="text-sm text-slate-500 bg-slate-50 p-3 rounded-md border border-slate-100 flex items-center gap-2">
+                  <span className="font-medium text-slate-700">Created by:</span>
+                  {formData.creator_first_name} {formData.creator_last_name}
+                </div>
+              ) : null}
+
               <div className="space-y-2">
                 <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
                 <Input

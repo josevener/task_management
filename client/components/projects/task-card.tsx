@@ -91,13 +91,24 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
                   {/* <div className="flex items-center gap-1"><MessageSquare className="h-3 w-3"/> 2</div> */}
                 </div>
 
-                {task.assignee_id && (
-                  <Avatar className="h-6 w-6 border border-slate-200 text-[10px]">
-                    <AvatarFallback className="bg-slate-100 text-slate-600">
-                      {getInitials()}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
+                <div className="flex items-center gap-2">
+                  {task.assigner_first_name ? (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Assigned by {task.assigned_by === task.assignee_id ? "Me" : `${task.assigner_first_name} ${task.assigner_last_name ? task.assigner_last_name[0] + '.' : ''}`}
+                    </span>
+                  ) : task.creator_first_name ? (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Created by {task.creator_first_name} {task.creator_last_name ? task.creator_last_name[0] + '.' : ''}
+                    </span>
+                  ) : null}
+                  {task.assignee_id && (
+                    <Avatar className="h-6 w-6 border border-slate-200 text-[10px]" title={`Assigned to ${task.assignee_first_name} ${task.assignee_last_name}`}>
+                      <AvatarFallback className="bg-slate-100 text-slate-600">
+                        {getInitials()}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

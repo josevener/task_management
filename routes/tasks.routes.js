@@ -71,7 +71,7 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
 
   const tasks = await query(`
     SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.start_date, t.due_date,
+           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
            t.position, t.created_by, t.created_at, t.updated_at,
            assignee.first_name AS assignee_first_name,
            assignee.last_name AS assignee_last_name,
@@ -79,11 +79,12 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
            creator.first_name AS creator_first_name,
            creator.last_name AS creator_last_name,
            creator.email AS creator_email,
-           p.name AS project_name
+           assigner.first_name AS assigner_first_name,
+           assigner.last_name AS assigner_last_name
     FROM tasks t
     LEFT JOIN users assignee ON assignee.id = t.assignee_id
     LEFT JOIN users creator ON creator.id = t.created_by
-    LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN users assigner ON assigner.id = t.assigned_by
     WHERE ${conditions.join(' AND ')}
     ORDER BY t.position ASC, t.created_at DESC
   `, params);
@@ -98,7 +99,7 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
 tasksRouter.get('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.start_date, t.due_date,
+           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
            t.position, t.created_by, t.created_at, t.updated_at,
            assignee.first_name AS assignee_first_name,
            assignee.last_name AS assignee_last_name,
@@ -106,10 +107,13 @@ tasksRouter.get('/:id', asyncHandler(async (req, res) => {
            creator.first_name AS creator_first_name,
            creator.last_name AS creator_last_name,
            creator.email AS creator_email,
-           p.name AS project_name
+           p.name AS project_name,
+           assigner.first_name AS assigner_first_name,
+           assigner.last_name AS assigner_last_name
     FROM tasks t
     LEFT JOIN users assignee ON assignee.id = t.assignee_id
     LEFT JOIN users creator ON creator.id = t.created_by
+    LEFT JOIN users assigner ON assigner.id = t.assigned_by
     LEFT JOIN projects p ON p.id = t.project_id
     INNER JOIN workspaces w ON w.id = p.workspace_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -197,8 +201,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     const position = positionRows[0].next_position || 1;
 
     const [taskResult] = await connection.execute(`
-      INSERT INTO tasks (project_id, parent_task_id, title, description, status, priority, assignee_id, start_date, due_date, position, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (project_id, parent_task_id, title, description, status, priority, assignee_id, assigned_by, start_date, due_date, position, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       project_id,
       parent_task_id,
@@ -207,6 +211,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
       status,
       priority,
       assignee_id,
+      assignee_id ? req.currentUser.id : null,
       start_date || null,
       due_date || null,
       position,
@@ -245,17 +250,20 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
 
     const [taskRows] = await connection.execute(`
       SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-             t.status, t.priority, t.assignee_id, t.start_date, t.due_date,
+             t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
              t.position, t.created_by, t.created_at, t.updated_at,
              assignee.first_name AS assignee_first_name,
              assignee.last_name AS assignee_last_name,
              assignee.email AS assignee_email,
              creator.first_name AS creator_first_name,
              creator.last_name AS creator_last_name,
-             creator.email AS creator_email
+             creator.email AS creator_email,
+             assigner.first_name AS assigner_first_name,
+             assigner.last_name AS assigner_last_name
       FROM tasks t
       LEFT JOIN users assignee ON assignee.id = t.assignee_id
       LEFT JOIN users creator ON creator.id = t.created_by
+      LEFT JOIN users assigner ON assigner.id = t.assigned_by
       WHERE t.id = ?
     `, [taskResult.insertId]);
 
@@ -310,6 +318,12 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
 
   if (updates.length === 0 && !shouldUpdateTags) {
     return sendError(res, 'No fields to update', 400);
+  }
+
+  // Handle explicit assignee updates explicitly to update assigned_by
+  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id')) {
+    updates.push('assigned_by = ?');
+    params.push(req.body.assignee_id ? req.currentUser.id : null);
   }
 
   await withTransaction(async (connection) => {
@@ -375,17 +389,20 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
 
   const rows = await query(`
     SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.start_date, t.due_date,
+           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
            t.position, t.created_by, t.created_at, t.updated_at,
            assignee.first_name AS assignee_first_name,
            assignee.last_name AS assignee_last_name,
            assignee.email AS assignee_email,
            creator.first_name AS creator_first_name,
            creator.last_name AS creator_last_name,
-           creator.email AS creator_email
+           creator.email AS creator_email,
+           assigner.first_name AS assigner_first_name,
+           assigner.last_name AS assigner_last_name
     FROM tasks t
     LEFT JOIN users assignee ON assignee.id = t.assignee_id
     LEFT JOIN users creator ON creator.id = t.created_by
+    LEFT JOIN users assigner ON assigner.id = t.assigned_by
     WHERE t.id = ?
   `, [req.params.id]);
 
