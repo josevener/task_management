@@ -6,10 +6,9 @@ import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { createRole } from "@/lib/api/roles";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/lib/toast";
+import { RoleForm } from "@/components/forms/RoleForm";
 
 export default function CreateRolePage() {
   const params = useParams();
@@ -19,18 +18,14 @@ export default function CreateRolePage() {
   const { activeWorkspace } = useWorkspace();
   const { showToast } = useToast();
 
-  const [formData, setFormData] = useState({ name: "", description: "" });
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) return;
-
+  const handleSubmit = async (data: { name: string; description: string }) => {
     setSubmitting(true);
     try {
       await createRole(workspaceId, {
-        name: formData.name,
-        description: formData.description
+        name: data.name,
+        description: data.description
       });
 
       showToast("Role created successfully", "success");
@@ -65,49 +60,12 @@ export default function CreateRolePage() {
 
       <main className="flex-1 overflow-y-auto w-full py-6">
         <div className="max-w-7xl mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="name" className="text-sm font-medium">Role Name</label>
-              <Input
-                id="name"
-                placeholder="e.g. QA Tester, Guest Viewer"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                autoFocus
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="description" className="text-sm font-medium">Description (Optional)</label>
-              <Textarea
-                id="description"
-                placeholder="What can people with this role do?"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={4}
-              />
-            </div>
-
-            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
-              <Link href={`/workspaces/${workspaceId}/roles`}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="cursor-pointer"
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-              </Link>
-              <Button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                disabled={!formData.name.trim() || submitting}
-              >
-                {submitting ? "Creating..." : "Create Role"}
-              </Button>
-            </div>
-          </form>
+          <RoleForm 
+            onSubmit={handleSubmit}
+            onCancel={() => router.push(`/workspaces/${workspaceId}/roles`)}
+            isSubmitting={submitting}
+            submitLabel="Create Role"
+          />
         </div>
       </main>
     </div>

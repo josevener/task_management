@@ -5,10 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getRoles, updateRole, type Role } from "@/lib/api/roles";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Edit2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/lib/toast";
+import { RoleForm } from "@/components/forms/RoleForm";
 
 export default function EditRolePage() {
   const params = useParams();
@@ -19,7 +18,6 @@ export default function EditRolePage() {
   const { showToast } = useToast();
 
   const [role, setRole] = useState<Role | null>(null);
-  const [formData, setFormData] = useState({ name: "", description: "" });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,7 +37,6 @@ export default function EditRolePage() {
         return;
       }
       setRole(found);
-      setFormData({ name: found.name, description: found.description || "" });
     }
     catch (error: unknown) {
       const apiError = error as { message?: string };
@@ -51,15 +48,14 @@ export default function EditRolePage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !role) return;
+  const handleSubmit = async (data: { name: string; description: string }) => {
+    if (!role) return;
 
     setSubmitting(true);
     try {
       await updateRole(workspaceId, role.id, {
-        name: formData.name,
-        description: formData.description
+        name: data.name,
+        description: data.description
       });
       showToast("Role updated successfully", "success");
       router.push(`/workspaces/${workspaceId}/roles`);
@@ -101,50 +97,19 @@ export default function EditRolePage() {
 
       <main className="flex-1 overflow-y-auto w-full p-6">
         <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="name" className="text-sm font-medium">Role Name</label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                disabled={role?.is_system_role}
-                required
-              />
-              {!!role?.is_system_role && (
-                <p className="text-xs text-slate-500">System roles cannot be renamed.</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="description" className="text-sm font-medium">Description</label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={4}
-              />
-            </div>
-
-            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
-              <Link href={`/workspaces/${workspaceId}/roles`}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="cursor-pointer"
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-              </Link>
-              <Button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                disabled={!formData.name.trim() || submitting}
-              >
-                {submitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          </form>
+          {role && (
+            <RoleForm
+              initialData={{
+                name: role.name,
+                description: role.description || "",
+                is_system_role: role.is_system_role
+              }}
+              onSubmit={handleSubmit}
+              onCancel={() => router.push(`/workspaces/${workspaceId}/roles`)}
+              isSubmitting={submitting}
+              submitLabel="Save Changes"
+            />
+          )}
         </div>
       </main>
     </div>

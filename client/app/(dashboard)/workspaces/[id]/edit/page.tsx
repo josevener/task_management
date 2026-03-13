@@ -6,12 +6,10 @@ import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { updateWorkspace } from "@/lib/api/workspaces";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/lib/toast";
 import { Loader2, ArrowLeft, Briefcase } from "lucide-react";
+import { WorkspaceForm } from "@/components/forms/WorkspaceForm";
 
 export default function EditWorkspacePage() {
   const params = useParams();
@@ -21,19 +19,13 @@ export default function EditWorkspacePage() {
   const workspaceId = Number(params.id);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', description: '', color_theme: '' });
-
-  const presetColors = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#db2777"];
+  const [workspace, setWorkspace] = useState<any>(null);
 
   useEffect(() => {
     if (!loading && workspaces.length > 0) {
-      const workspace = workspaces.find(w => w.id === workspaceId);
-      if (workspace) {
-        setEditForm({
-          name: workspace.name,
-          description: workspace.description || '',
-          color_theme: workspace.color_theme || '#2563eb'
-        });
+      const found = workspaces.find(w => w.id === workspaceId);
+      if (found) {
+        setWorkspace(found);
       }
       else {
         showToast("Workspace not found", "error");
@@ -42,13 +34,10 @@ export default function EditWorkspacePage() {
     }
   }, [loading, workspaces, workspaceId, router, showToast]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editForm.name.trim()) return;
-
+  const handleSubmit = async (data: { name: string; description: string; organization_id: string; color_theme: string }) => {
     try {
       setIsSubmitting(true);
-      await updateWorkspace(workspaceId, editForm);
+      await updateWorkspace(workspaceId, data);
       showToast("Workspace updated successfully", "success");
       await refreshWorkspaces();
       router.push("/workspaces");
@@ -61,7 +50,7 @@ export default function EditWorkspacePage() {
     }
   };
 
-  if (loading || !editForm.name) {
+  if (loading || !workspace) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -84,66 +73,29 @@ export default function EditWorkspacePage() {
       </div>
 
       <Card>
-        <form onSubmit={handleSubmit}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Briefcase className="h-5 w-5 text-slate-500" />
-              Workspace Settings
-            </CardTitle>
-            <CardDescription>
-              Modify your workspace name, description, and theme.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name <span className="text-red-500">*</span></Label>
-              <Input
-                id="name"
-                value={editForm.name}
-                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                required
-                placeholder="e.g. Engineering Team"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={editForm.description}
-                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-                rows={4}
-                placeholder="What is this workspace for?"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Color Theme</Label>
-              <div className="flex gap-3">
-                {presetColors.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`w-10 h-10 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-transform hover:scale-110 cursor-pointer ${editForm.color_theme === color ? "ring-2 ring-offset-2 ring-slate-900 scale-110" : "opacity-80"
-                      }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setEditForm(prev => ({ ...prev, color_theme: color }))}
-                    aria-label={`Select color ${color}`}
-                  />
-                ))}
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-end gap-3 border-t bg-slate-50 p-4">
-            <Button type="button" variant="outline" asChild className="cursor-pointer">
-              <Link href="/workspaces">Cancel</Link>
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 cursor-pointer">
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save changes
-            </Button>
-          </CardFooter>
-        </form>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5 text-slate-500" />
+            Workspace Settings
+          </CardTitle>
+          <CardDescription>
+            Modify your workspace name, description, and theme.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WorkspaceForm
+            initialData={{
+              name: workspace.name,
+              description: workspace.description || '',
+              organization_id: String(workspace.organization_id),
+              color_theme: workspace.color_theme || '#2563eb'
+            }}
+            onSubmit={handleSubmit}
+            onCancel={() => router.push("/workspaces")}
+            isSubmitting={isSubmitting}
+            submitLabel="Save Changes"
+          />
+        </CardContent>
       </Card>
     </div>
   );
