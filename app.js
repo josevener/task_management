@@ -9,6 +9,7 @@ const { workspacesRouter } = require('./routes/workspaces.routes');
 const { projectsRouter } = require('./routes/projects.routes');
 const { tasksRouter } = require('./routes/tasks.routes');
 const { rolesRouter } = require('./routes/roles.routes');
+const { notificationsRouter } = require('./routes/notifications.routes');
 const { notFoundHandler } = require('./middleware/not-found');
 const { errorHandler } = require('./middleware/error-handler');
 
@@ -41,7 +42,8 @@ app.use('/api/organizations', organizationsRouter);
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/tasks', tasksRouter);
-app.use('/api', rolesRouter); 
+app.use('/api/notifications', notificationsRouter);
+app.use('/api', rolesRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
