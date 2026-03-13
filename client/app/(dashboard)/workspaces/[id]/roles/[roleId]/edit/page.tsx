@@ -15,9 +15,9 @@ export default function EditRolePage() {
   const router = useRouter();
   const workspaceId = parseInt(params.id as string);
   const roleId = parseInt(params.roleId as string);
-  
+
   const { showToast } = useToast();
-  
+
   const [role, setRole] = useState<Role | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [loading, setLoading] = useState(true);
@@ -40,11 +40,13 @@ export default function EditRolePage() {
       }
       setRole(found);
       setFormData({ name: found.name, description: found.description || "" });
-    } catch (error: unknown) {
+    }
+    catch (error: unknown) {
       const apiError = error as { message?: string };
       showToast(apiError.message || "Failed to load role", "error");
       router.push(`/workspaces/${workspaceId}/roles`);
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };
@@ -52,7 +54,7 @@ export default function EditRolePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !role) return;
-    
+
     setSubmitting(true);
     try {
       await updateRole(workspaceId, role.id, {
@@ -61,42 +63,41 @@ export default function EditRolePage() {
       });
       showToast("Role updated successfully", "success");
       router.push(`/workspaces/${workspaceId}/roles`);
-    } catch (error: unknown) {
+    }
+    catch (error: unknown) {
       const apiError = error as { message?: string; errors?: { name?: string } };
       showToast(apiError.message || apiError.errors?.name || "Failed to update role", "error");
-    } finally {
+    }
+    finally {
       setSubmitting(false);
     }
   };
 
   if (loading) {
-     return (
-       <div className="flex h-full items-center justify-center bg-slate-50">
-         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-       </div>
-     );
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
-      <header className="flex-none bg-white border-b border-slate-200 px-6 py-4">
-        <div className="flex items-center gap-4 max-w-2xl mx-auto">
-          <Link href={`/workspaces/${workspaceId}/roles`}>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Edit2 className="h-5 w-5 text-blue-500" />
-              Edit Role
-            </h1>
-            <p className="text-sm text-slate-500">
-              Update details for {role?.name}
-            </p>
-          </div>
+      <div className="flex items-center gap-4">
+        <Link href={`/workspaces/${workspaceId}/roles`}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            Edit Role
+          </h1>
+          <p className="text-sm text-slate-500">
+            Update details for {role?.name}
+          </p>
         </div>
-      </header>
+      </div>
 
       <main className="flex-1 overflow-y-auto w-full p-6">
         <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -110,7 +111,7 @@ export default function EditRolePage() {
                 disabled={role?.is_system_role}
                 required
               />
-              {role?.is_system_role && (
+              {!!role?.is_system_role && (
                 <p className="text-xs text-slate-500">System roles cannot be renamed.</p>
               )}
             </div>
@@ -123,12 +124,23 @@ export default function EditRolePage() {
                 rows={4}
               />
             </div>
-            
+
             <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <Link href={`/workspaces/${workspaceId}/roles`}>
-                <Button type="button" variant="outline" disabled={submitting}>Cancel</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="cursor-pointer"
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
               </Link>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={!formData.name.trim() || submitting}>
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                disabled={!formData.name.trim() || submitting}
+              >
                 {submitting ? "Saving..." : "Save Changes"}
               </Button>
             </div>

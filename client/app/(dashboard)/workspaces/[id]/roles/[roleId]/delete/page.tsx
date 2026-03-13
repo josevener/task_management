@@ -13,9 +13,9 @@ export default function DeleteRolePage() {
   const router = useRouter();
   const workspaceId = parseInt(params.id as string);
   const roleId = parseInt(params.roleId as string);
-  
+
   const { showToast } = useToast();
-  
+
   const [role, setRole] = useState<Role | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ export default function DeleteRolePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!role) return;
-    
+
     setSubmitting(true);
     try {
       await deleteRole(workspaceId, role.id, fallbackRoleId ? Number(fallbackRoleId) : undefined);
@@ -71,11 +71,11 @@ export default function DeleteRolePage() {
   };
 
   if (loading) {
-     return (
-       <div className="flex h-full items-center justify-center bg-slate-50">
-         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-       </div>
-     );
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return (
@@ -108,36 +108,36 @@ export default function DeleteRolePage() {
                 This action cannot be undone. All users with this role will lose their current permissions unless assigned to a new role.
               </p>
             </div>
-            
+
             {(role?.default_user_count || 0) > 0 && (
-               <div className="space-y-4">
-                 <div className="p-4 bg-amber-50 text-amber-800 rounded-md border border-amber-200 text-sm">
-                   <strong>Warning:</strong> There are {role?.default_user_count} members currently assigned to this role. You must select a fallback role to reassign them to before deleting.
-                 </div>
-                 <div className="space-y-2">
-                   <label htmlFor="fallback" className="text-sm font-medium">Fallback Role</label>
-                   <select 
-                      id="fallback" 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={fallbackRoleId}
-                      onChange={(e) => setFallbackRoleId(Number(e.target.value))}
-                      required
-                   >
-                     <option value="" disabled>Select a fallback role...</option>
-                     {roles.filter(r => r.id !== role?.id).map(r => (
-                       <option key={r.id} value={r.id}>{r.name}</option>
-                     ))}
-                   </select>
-                 </div>
-               </div>
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 text-amber-800 rounded-md border border-amber-200 text-sm">
+                  <strong>Warning:</strong> There are {role?.default_user_count} members currently assigned to this role. You must select a fallback role to reassign them to before deleting.
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="fallback" className="text-sm font-medium">Fallback Role</label>
+                  <select
+                    id="fallback"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={fallbackRoleId}
+                    onChange={(e) => setFallbackRoleId(Number(e.target.value))}
+                    required
+                  >
+                    <option value="" disabled>Select a fallback role...</option>
+                    {roles.filter(r => r.id !== role?.id).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             )}
-            
+
             <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <Link href={`/workspaces/${workspaceId}/roles`}>
                 <Button type="button" variant="outline" disabled={submitting}>Cancel</Button>
               </Link>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 variant="destructive"
                 disabled={submitting || ((role?.default_user_count || 0) > 0 && !fallbackRoleId)}
               >
