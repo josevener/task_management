@@ -131,50 +131,47 @@ export default function RolePermissionsPage() {
 
   if (workspaceLoading || loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex h-full items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
       {/* Header */}
-      <header className="flex-none bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Link href={`/workspaces/${workspaceId}/roles`}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                {role?.name === 'Admin' ? <ShieldAlert className="h-5 w-5 text-amber-500" /> : <ShieldCheck className="h-5 w-5 text-blue-500" />}
-                {role?.name} Permissions
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Check boxes to grant {role?.name} access to modules and actions.
-              </p>
-            </div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link href={`/workspaces/${workspaceId}/roles`}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full cursor-pointer">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              {role?.name === 'Admin' ? <ShieldAlert className="h-5 w-5 text-amber-500" /> : <ShieldCheck className="h-5 w-5 text-blue-500" />}
+              {role?.name} Permissions
+            </h1>
+            <p className="text-sm text-slate-500">
+              Check boxes to grant {role?.name} access to modules and actions.
+            </p>
           </div>
-          <Button
-            onClick={handleSave}
-            disabled={saving || role?.name === 'Admin'}
-            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[100px]"
-          >
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Matrix
-          </Button>
         </div>
-      </header>
+        <Button
+          onClick={handleSave}
+          disabled={saving || role?.name === 'Admin'}
+          className="bg-blue-600 hover:bg-blue-700 text-white min-w-[100px] cursor-pointer"
+        >
+          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+          Save Matrix
+        </Button>
+      </div>
 
       {/* Content Matrix */}
-      <main className="flex-1 overflow-y-auto w-full p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-
+      <main className="flex-1 overflow-y-auto w-full py-6">
+        <div className="max-w-7xl mx-auto space-y-6">
           {role?.name === 'Admin' && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800/50 dark:text-amber-400 p-4 rounded-xl flex items-start gap-3">
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start gap-3">
               <ShieldAlert className="h-5 w-5 mt-0.5 shrink-0" />
               <div>
                 <h3 className="font-semibold text-sm">Admin Role is Immutable</h3>
@@ -186,16 +183,16 @@ export default function RolePermissionsPage() {
             </div>
           )}
 
-          <div className="grid gap-6">
+          <div className="grid gap-2 w-full max-h-[calc(100vh-200px)] overflow-y-auto">
             {Object.entries(groupedPermissions).map(([moduleName, modulePerms]) => {
               // Determine if all perms in this module are checked
               const allChecked = modulePerms.every(p => assignedPermissionIds.has(p.id));
               const someChecked = modulePerms.some(p => assignedPermissionIds.has(p.id)) && !allChecked;
 
               return (
-                <div key={moduleName} className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                <div key={moduleName} className="bg-white border border-slate-200 rounded-xl shadow-sm">
                   {/* Module Header */}
-                  <div className="bg-slate-50 dark:bg-slate-900/50 px-6 py-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
+                  <div className="bg-slate-50 px-6 py-4 flex items-center gap-3 border-b border-slate-200">
                     <Checkbox
                       id={`module-${moduleName}`}
                       checked={allChecked ? true : (someChecked ? "indeterminate" : false)}
@@ -204,7 +201,7 @@ export default function RolePermissionsPage() {
                     />
                     <label
                       htmlFor={`module-${moduleName}`}
-                      className="font-bold text-slate-800 dark:text-slate-200 capitalize cursor-pointer mb-0 select-none"
+                      className="font-bold text-slate-800 capitalize cursor-pointer mb-0 select-none"
                     >
                       {moduleName} Module
                     </label>
@@ -224,11 +221,11 @@ export default function RolePermissionsPage() {
                         <div className="grid gap-1">
                           <label
                             htmlFor={`perm-${perm.id}`}
-                            className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"
+                            className="text-sm font-medium text-slate-700 cursor-pointer select-none"
                           >
                             {perm.action.split(':')[1].replace('_', ' ')}
                           </label>
-                          <p className="text-xs text-slate-500 dark:text-slate-500">
+                          <p className="text-xs text-slate-500">
                             {perm.description}
                           </p>
                         </div>

@@ -72,15 +72,15 @@ export default function DeleteRolePage() {
 
   if (loading) {
      return (
-       <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+       <div className="flex h-full items-center justify-center bg-slate-50">
          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
        </div>
      );
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
-      <header className="flex-none bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-4">
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+      <header className="flex-none bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center gap-4 max-w-2xl mx-auto">
           <Link href={`/workspaces/${workspaceId}/roles`}>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -88,11 +88,11 @@ export default function DeleteRolePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Trash2 className="h-5 w-5 text-red-500" />
               Delete Role
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-500">
               Permanently remove {role?.name} from the workspace
             </p>
           </div>
@@ -100,18 +100,18 @@ export default function DeleteRolePage() {
       </header>
 
       <main className="flex-1 overflow-y-auto w-full p-6">
-        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-950 border border-red-200 dark:border-red-900/50 rounded-xl p-6 shadow-sm">
+        <div className="max-w-2xl mx-auto bg-white border border-red-200 rounded-xl p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <h2 className="text-lg font-semibold text-red-600">Are you sure you want to delete the role &quot;{role?.name}&quot;?</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-slate-600">
                 This action cannot be undone. All users with this role will lose their current permissions unless assigned to a new role.
               </p>
             </div>
             
             {(role?.default_user_count || 0) > 0 && (
                <div className="space-y-4">
-                 <div className="p-4 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-800 text-sm">
+                 <div className="p-4 bg-amber-50 text-amber-800 rounded-md border border-amber-200 text-sm">
                    <strong>Warning:</strong> There are {role?.default_user_count} members currently assigned to this role. You must select a fallback role to reassign them to before deleting.
                  </div>
                  <div className="space-y-2">
@@ -132,7 +132,7 @@ export default function DeleteRolePage() {
                </div>
             )}
             
-            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <Link href={`/workspaces/${workspaceId}/roles`}>
                 <Button type="button" variant="outline" disabled={submitting}>Cancel</Button>
               </Link>

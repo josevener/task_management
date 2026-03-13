@@ -71,15 +71,15 @@ export default function EditRolePage() {
 
   if (loading) {
      return (
-       <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+       <div className="flex h-full items-center justify-center bg-slate-50">
          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
        </div>
      );
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
-      <header className="flex-none bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-4">
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+      <header className="flex-none bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center gap-4 max-w-2xl mx-auto">
           <Link href={`/workspaces/${workspaceId}/roles`}>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -87,11 +87,11 @@ export default function EditRolePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Edit2 className="h-5 w-5 text-blue-500" />
               Edit Role
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-500">
               Update details for {role?.name}
             </p>
           </div>
@@ -99,7 +99,7 @@ export default function EditRolePage() {
       </header>
 
       <main className="flex-1 overflow-y-auto w-full p-6">
-        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
+        <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="name" className="text-sm font-medium">Role Name</label>
@@ -124,7 +124,7 @@ export default function EditRolePage() {
               />
             </div>
             
-            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <Link href={`/workspaces/${workspaceId}/roles`}>
                 <Button type="button" variant="outline" disabled={submitting}>Cancel</Button>
               </Link>

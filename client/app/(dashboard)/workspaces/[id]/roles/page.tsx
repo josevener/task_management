@@ -20,7 +20,9 @@ import {
   Plus,
   ArrowLeft,
   Users,
-  Settings2
+  Settings2,
+  Edit2,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/lib/toast";
 
@@ -29,9 +31,9 @@ export default function RolesPage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = parseInt(params.id as string);
-  
+
   const { activeWorkspace, loading: workspaceLoading, hasPermission } = useWorkspace();
-  
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,64 +48,59 @@ export default function RolesPage() {
     try {
       const response = await getRoles(workspaceId);
       setRoles(response.roles);
-    } catch (error: unknown) {
+    }
+    catch (error: unknown) {
       const apiError = error as { message?: string; status?: number };
       showToast(apiError.message || "Failed to load roles", "error");
       if (apiError.status === 403) {
         router.push(`/workspaces/${workspaceId}`);
       }
-    } finally {
+    }
+    finally {
       setLoading(false);
     }
   };
 
   if (workspaceLoading || loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="flex h-full items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden">
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
       {/* Header */}
-      <header className="flex-none bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-4">
-        <div className="flex items-center justify-between max-w-5xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Link href={`/workspaces/${workspaceId}`}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Shield className="h-5 w-5 text-blue-500" />
-                Roles & Permissions
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Manage access rights and custom roles for {activeWorkspace?.name}
-              </p>
-            </div>
-          </div>
-          {hasPermission('roles:create') && (
-            <Link href={`/workspaces/${workspaceId}/roles/new`}>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Custom Role
-              </Button>
-            </Link>
-          )}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Shield className="h-5 w-5 text-blue-500" />
+            Roles
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Manage access rights and roles for {activeWorkspace?.name}
+          </p>
         </div>
-      </header>
+        {hasPermission('roles:create') && (
+          <Button
+            asChild
+            className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
+            <Link href={`/workspaces/${workspaceId}/roles/new`}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Role
+            </Link>
+          </Button>
+        )}
+      </div>
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto w-full">
-        <div className="max-w-5xl mx-auto p-6">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <div className="max-w-5xl mx-auto py-4">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-sm font-medium">
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm font-medium">
                   <th className="px-6 py-4">Role Name</th>
                   <th className="px-6 py-4">Description</th>
                   <th className="px-6 py-4">Type</th>
@@ -113,26 +110,26 @@ export default function RolesPage() {
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-200">
                 {roles.map((role) => (
-                  <tr key={role.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                  <tr key={role.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      <div className="font-semibold text-slate-900 flex items-center gap-2">
                         {role.name}
-                        {role.is_system_role && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500">
+                        {!!role.is_system_role && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-500">
                             Default
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 max-w-xs truncate">
+                    <td className="px-6 py-4 text-sm text-slate-600 max-w-xs truncate">
                       {role.description || <span className="text-slate-400 italic">No description</span>}
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                    <td className="px-6 py-4 text-sm text-slate-600">
                       {role.is_system_role ? "System" : "Custom"}
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <td className="px-6 py-4 text-sm text-slate-600 flex items-center gap-1">
                       <Users className="h-4 w-4 text-slate-400" />
                       {role.default_user_count || 0}
                     </td>
@@ -140,7 +137,7 @@ export default function RolesPage() {
                       <td className="px-6 py-4 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 cursor-pointer">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -155,6 +152,7 @@ export default function RolesPage() {
                                 </Link>
                                 <Link href={`/workspaces/${workspaceId}/roles/${role.id}/edit`}>
                                   <DropdownMenuItem className="cursor-pointer">
+                                    <Edit2 className="h-4 w-4 mr-2" />
                                     Edit Details
                                   </DropdownMenuItem>
                                 </Link>
@@ -164,7 +162,8 @@ export default function RolesPage() {
                               <>
                                 {hasPermission('roles:edit') && <DropdownMenuSeparator />}
                                 <Link href={`/workspaces/${workspaceId}/roles/${role.id}/delete`}>
-                                  <DropdownMenuItem className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600 dark:focus:bg-red-900/20">
+                                  <DropdownMenuItem className="cursor-pointer text-red-600 focus:bg-red-50 focus:text-red-600">
+                                    <Trash2 className="h-4 w-4 mr-2" />
                                     Delete Role
                                   </DropdownMenuItem>
                                 </Link>
@@ -178,7 +177,7 @@ export default function RolesPage() {
                 ))}
                 {roles.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                       No roles found for this workspace.
                     </td>
                   </tr>

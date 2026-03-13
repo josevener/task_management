@@ -37,8 +37,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, show: hasPermission('dashboard:view') },
     { name: "Workspaces", href: "/workspaces", icon: Briefcase, show: hasPermission('workspaces:view') },
     ...(activeWorkspace ? [
-      { name: "Team", href: `/workspaces/${activeWorkspace.id}/members`, icon: Users, show: hasPermission('members:view') },
-      { name: "Roles & Permissions", href: `/workspaces/${activeWorkspace.id}/roles`, icon: ShieldAlert, show: hasPermission('roles:view') || hasPermission('roles:edit') || activeWorkspace.user_role === 'Admin' }
+      { name: "Team Management", href: `/workspaces/${activeWorkspace.id}/members`, icon: Users, show: hasPermission('members:view') },
+      { name: "Roles", href: `/workspaces/${activeWorkspace.id}/roles`, icon: ShieldAlert, show: hasPermission('roles:view') || hasPermission('roles:edit') || activeWorkspace.user_role === 'Admin' }
     ] : []),
     { name: "Projects", href: "/projects", icon: FolderKanban, show: hasPermission('projects:view') },
     { name: "My Tasks", href: "/tasks", icon: CheckSquare, show: hasPermission('tasks:view') },
@@ -86,7 +86,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
               <DropdownMenuItem
                 key={workspace.id}
                 onClick={() => switchWorkspace(workspace)}
-                className={`${activeWorkspace?.id === workspace.id ? "bg-slate-100 dark:bg-slate-800" : ""} cursor-pointer`}
+                className={`${activeWorkspace?.id === workspace.id ? "bg-slate-100" : ""} cursor-pointer`}
               >
                 <div
                   className="w-6 h-6 rounded mr-2 flex items-center justify-center text-white font-bold text-[10px]"
