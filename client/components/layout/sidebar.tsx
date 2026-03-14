@@ -6,6 +6,7 @@ import {
   Briefcase,
   FolderKanban,
   CheckSquare,
+  ListTodo,
   Settings,
   ChevronDown,
   Plus,
@@ -41,7 +42,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
       { name: "Roles", href: `/workspaces/${activeWorkspace.id}/roles`, icon: ShieldAlert, show: hasPermission('roles:view') || hasPermission('roles:edit') || activeWorkspace.user_role === 'Admin' }
     ] : []),
     { name: "Projects", href: "/projects", icon: FolderKanban, show: hasPermission('projects:view') },
-    { name: "My Tasks", href: "/tasks", icon: CheckSquare, show: hasPermission('tasks:view') },
+    { name: "Tasks", href: "/tasks", icon: ListTodo, show: hasPermission('tasks:view') },
+    { name: "My Tasks", href: "/my-tasks", icon: CheckSquare, show: hasPermission('tasks:view') },
     { name: "Organizations", href: "/organizations", icon: Building2, show: hasPermission('organizations:view') },
     { name: "Settings", href: "/settings", icon: Settings, show: hasPermission('settings:view') },
   ].filter(item => item.show);

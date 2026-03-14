@@ -53,6 +53,8 @@ export interface Project {
   progress_percentage: number;
   health_status: 'on_track' | 'at_risk' | 'off_track';
   is_template: boolean;
+  total_tasks?: number;
+  completed_tasks?: number;
   created_at: string;
   updated_at?: string;
   owner_first_name?: string;

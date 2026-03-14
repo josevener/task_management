@@ -3,16 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
-import { updateWorkspace, deleteWorkspace } from "@/lib/api/workspaces";
+import { deleteWorkspace } from "@/lib/api/workspaces";
 import type { Workspace } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Briefcase, ChevronRight, Settings, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/lib/toast";
 
 export default function WorkspacesPage() {

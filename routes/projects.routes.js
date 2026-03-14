@@ -22,10 +22,13 @@ projectsRouter.get('/', asyncHandler(async (req, res) => {
 
     const projects = await query(`
       SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-             p.owner_id, p.start_date, p.end_date, p.progress_percentage,
+             p.owner_id, p.start_date, p.end_date,
              p.health_status, p.is_template, p.created_at, p.updated_at,
              u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-             u.email AS owner_email
+             u.email AS owner_email,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
+             ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
       FROM projects p
       LEFT JOIN users u ON u.id = p.owner_id
       WHERE p.workspace_id = ?
@@ -37,10 +40,13 @@ projectsRouter.get('/', asyncHandler(async (req, res) => {
 
   const projects = await query(`
     SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-           p.owner_id, p.start_date, p.end_date, p.progress_percentage,
+           p.owner_id, p.start_date, p.end_date,
            p.health_status, p.is_template, p.created_at, p.updated_at,
            u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-           u.email AS owner_email, w.name AS workspace_name
+           u.email AS owner_email, w.name AS workspace_name,
+           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
+           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
+           ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
     FROM projects p
     INNER JOIN workspaces w ON w.id = p.workspace_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -55,10 +61,13 @@ projectsRouter.get('/', asyncHandler(async (req, res) => {
 projectsRouter.get('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-           p.owner_id, p.start_date, p.end_date, p.progress_percentage,
+           p.owner_id, p.start_date, p.end_date,
            p.health_status, p.is_template, p.created_at, p.updated_at,
            u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-           u.email AS owner_email, w.name AS workspace_name
+           u.email AS owner_email, w.name AS workspace_name,
+           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
+           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
+           ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
     FROM projects p
     INNER JOIN workspaces w ON w.id = p.workspace_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id

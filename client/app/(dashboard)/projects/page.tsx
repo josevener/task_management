@@ -2,24 +2,24 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { useAuth } from "@/contexts/auth-context";
-import { getProjects, updateProject, deleteProject } from "@/lib/api/projects";
+import { getProjects, deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FolderKanban, Plus, Calendar, Clock, MoreHorizontal, Search, FilterX, Loader2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { FolderKanban, Plus, Calendar, MoreHorizontal, Search, FilterX, Loader2, ArrowRight } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/lib/toast";
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const { activeWorkspace, hasPermission } = useWorkspace();
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -241,89 +241,114 @@ export default function ProjectsPage() {
           {filteredProjects.map((project) => {
             const canEditProject = project.owner_id === user?.id || hasPermission('projects:edit');
             const canDeleteProject = project.owner_id === user?.id || hasPermission('projects:delete');
-            
+
             return (
-            <Card key={project.id} className="flex flex-col hover:shadow-md transition-shadow">
-              {/* Existing Card Content mapped over filteredProjects */}
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <CardTitle className="text-lg truncate pr-4" title={project.name}>
-                      <Link href={`/projects/${project.id}`} className="hover:text-blue-600 transition-colors">
-                        {project.name}
-                      </Link>
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`${getStatusColor(project.status)} capitalize`}>
-                        {project.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0 -mr-2 cursor-pointer">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        asChild
-                        className="cursor-pointer"
-                      >
-                        <Link href={`/projects/${project.id}`}>View details</Link>
-                      </DropdownMenuItem>
-                      {canEditProject && (
-                        <DropdownMenuItem
-                          className="cursor-pointer"
-                          asChild
+              <Card
+                key={project.id}
+                className="flex flex-col hover:shadow-md transition-shadow cursor-pointer group"
+                onClick={() => router.push(`/projects/${project.id}`)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <CardTitle className="text-lg truncate pr-4" title={project.name}>
+                        <div
+                          className="hover:text-blue-600 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/projects/${project.id}`);
+                          }}
                         >
-                          <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
-                        </DropdownMenuItem>
-                      )}
-                      {canDeleteProject && (
-                        <DropdownMenuItem
-                          className="text-red-600 focus:text-red-600 cursor-pointer"
-                          onClick={() => setDeletingProject(project)}
-                        >
-                          Delete project
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 pb-4">
-                <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">
-                  {project.description || "No description provided."}
-                </p>
-
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span>Progress</span>
-                      <span>{project.progress_percentage || 0}%</span>
-                    </div>
-                    <Progress value={project.progress_percentage || 0} className="h-2" />
-                  </div>
-
-                  <div className="flex flex-col gap-2 text-xs text-slate-500">
-                    {project.end_date && (
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5" />
-                        <span>Due {new Date(project.end_date).toLocaleDateString()}</span>
+                          {project.name}
+                        </div>
+                      </CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`${getStatusColor(project.status)} capitalize`}>
+                          {project.status.replace('_', ' ')}
+                        </Badge>
                       </div>
-                    )}
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full inline-block bg-slate-200 relative">
-                        <span className={`absolute inset-0 rounded-full ${getHealthColor(project.health_status)}`}></span>
-                      </span>
-                      <span className="capitalize">{project.health_status.replace('_', ' ')}</span>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0 -mr-2 cursor-pointer">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canEditProject && (
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              asChild
+                            >
+                              <Link href={`/projects/${project.id}/edit`}>Edit project</Link>
+                            </DropdownMenuItem>
+                          )}
+                          {canDeleteProject && (
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600 cursor-pointer"
+                              onClick={() => setDeletingProject(project)}
+                            >
+                              Delete project
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent className="flex-1 pb-4">
+                  <p className="text-sm text-slate-600 line-clamp-2 mb-4 h-10">
+                    {project.description || "No description provided."}
+                  </p>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span>Progress</span>
+                        <div className="flex items-center gap-2">
+                          {project.total_tasks !== undefined && (
+                            <span className="text-slate-500 font-normal">
+                              {project.completed_tasks}/{project.total_tasks} tasks
+                            </span>
+                          )}
+                          <span>{project.progress_percentage || 0}%</span>
+                        </div>
+                      </div>
+                      <Progress value={project.progress_percentage || 0} className="h-2" />
+                    </div>
+
+                    <div className="flex items-end justify-between gap-2 pt-2 text-xs text-slate-500">
+                      <div className="flex flex-col gap-2">
+                        {project.end_date && (
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>Due {new Date(project.end_date).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full inline-block bg-slate-200 relative">
+                            <span className={`absolute inset-0 rounded-full ${getHealthColor(project.health_status)}`}></span>
+                          </span>
+                          <span className="capitalize">{project.health_status.replace('_', ' ')}</span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer h-8 px-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/projects/${project.id}`);
+                        }}
+                      >
+                        Open <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>

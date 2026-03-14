@@ -41,6 +41,21 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
     conditions.push('t.project_id = ?');
     params.push(req.query.project_id);
   }
+  else if (req.query.workspace_id) {
+    const accessRows = await query(`
+      SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
+    `, [req.query.workspace_id, req.currentUser.id]);
+
+    if (!accessRows[0]) {
+      return sendError(res, 'Workspace access denied', 403);
+    }
+
+    conditions.push(`EXISTS (
+      SELECT 1 FROM projects p3 
+      WHERE p3.id = t.project_id AND p3.workspace_id = ?
+    )`);
+    params.push(req.query.workspace_id);
+  }
   else {
     conditions.push(`EXISTS (
       SELECT 1
@@ -83,11 +98,13 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
            creator.last_name AS creator_last_name,
            creator.email AS creator_email,
            assigner.first_name AS assigner_first_name,
-           assigner.last_name AS assigner_last_name
+           assigner.last_name AS assigner_last_name,
+           p.name AS project_name
     FROM tasks t
     LEFT JOIN users assignee ON assignee.id = t.assignee_id
     LEFT JOIN users creator ON creator.id = t.created_by
     LEFT JOIN users assigner ON assigner.id = t.assigned_by
+    LEFT JOIN projects p ON p.id = t.project_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY t.position ASC, t.created_at DESC
   `, params);

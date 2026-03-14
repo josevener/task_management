@@ -9,6 +9,10 @@ export async function getMyTasks(assignee_id: number): Promise<TasksResponse> {
   return apiGet<TasksResponse>(`/tasks/?assignee_id=${assignee_id}`);
 }
 
+export async function getWorkspaceTasks(workspaceId: number): Promise<TasksResponse> {
+  return apiGet<TasksResponse>(`/tasks/?workspace_id=${workspaceId}`);
+}
+
 export async function getTask(projectId: number, taskId: number): Promise<TaskResponse> {
   return apiGet<TaskResponse>(`/tasks/${taskId}`);
 }
