@@ -67,7 +67,8 @@ export default function RegisterPage() {
         first_name: formData.first_name,
         last_name: formData.last_name,
       });
-      showToast('Registration successful!', 'success');
+      showToast('Account created! Please verify your email.', 'success');
+      router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`);
     }
     catch (error) {
       if (error instanceof ApiClientError) {

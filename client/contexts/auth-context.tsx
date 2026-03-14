@@ -49,7 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (credentials: LoginCredentials) => {
     try {
       const response = await apiLogin(credentials);
-      setUser(response.user);
+      if (response.user) {
+        setUser(response.user);
+      }
       router.push('/dashboard');
     }
     catch (error) {
@@ -59,14 +61,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (data: RegisterData) => {
     try {
-      const response = await apiRegister(data);
-      setUser(response.user);
-      router.push('/dashboard');
+      // In the new flow, register doesn't return a user immediately.
+      // It sends an OTP and expects verification.
+      await apiRegister(data);
+      // We don't redirect here anymore, the calling page (RegisterPage) will handle it
+      // so it can pass the email as a query param.
     }
     catch (error) {
       throw error;
     }
-  }, [router]);
+  }, []);
 
   const logout = useCallback(async () => {
     try {

@@ -39,7 +39,11 @@ export default function LoginPage() {
     }
     catch (error) {
       if (error instanceof ApiClientError) {
-        if (error.errors) {
+        if (error.status === 403 && error.errors?.needs_verification) {
+          showToast(error.message || 'Please verify your email.', 'error');
+          router.push(`/verify-email?email=${encodeURIComponent(error.errors.email)}`);
+        }
+        else if (error.errors) {
           setErrors(error.errors);
         }
         else {

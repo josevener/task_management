@@ -110,7 +110,8 @@ export interface RegisterData {
 }
 
 export interface AuthResponse {
-  user: User;
+  user?: User;
+  email?: string;
   message: string;
 }
 

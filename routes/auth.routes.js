@@ -2,10 +2,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-const { query } = require('../config/database');
+const { query, withTransaction } = require('../config/database');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
+const { createSlug } = require('../utils/slug');
 const { sendMail } = require('../utils/mailer');
 
 const authRouter = express.Router();
@@ -33,14 +34,21 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   }
 
   const rows = await query(`
-    SELECT id, email, password_hash, first_name, last_name, avatar_url, created_at
+    SELECT id, email, password_hash, first_name, last_name, avatar_url, created_at, is_active
     FROM users
-    WHERE email = ? AND is_active = TRUE
+    WHERE email = ?
   `, [email]);
 
   const user = rows[0];
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return sendError(res, 'Invalid email or password', 401);
+  }
+
+  if (!user.is_active) {
+    return sendError(res, 'Your email address is not verified. Please check your email for the verification code.', 403, { 
+      needs_verification: true,
+      email: user.email 
+    });
   }
 
   req.session.user_id = user.id;
@@ -99,23 +107,201 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 
   const password_hash = await bcrypt.hash(password, 10);
   const result = await query(`
-    INSERT INTO users (email, password_hash, first_name, last_name)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO users (email, password_hash, first_name, last_name, is_active)
+    VALUES (?, ?, ?, ?, FALSE)
   `, [email, password_hash, first_name, last_name]);
 
-  const userRows = await query(`
-    SELECT id, email, first_name, last_name, avatar_url, created_at
-    FROM users
-    WHERE id = ?
-  `, [result.insertId]);
+  // Generate 6-digit OTP
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
 
-  req.session.user_id = result.insertId;
-  req.session.user_email = email;
+  await query(`
+    INSERT INTO email_otp_verifications (email, otp_code, expires_at)
+    VALUES (?, ?, ?)
+  `, [email, otpCode, expiresAt]);
+
+  // Send OTP via email
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
+      <p>Hi ${first_name},</p>
+      <p>Thank you for signing up. Please use the following One-Time Password (OTP) to verify your email address and activate your account:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
+      </div>
+      <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+    </div>
+  `;
+
+  await sendMail({
+    to: email,
+    subject: 'Zentrix - Verify Your Email',
+    html: htmlContent,
+  });
 
   return sendSuccess(res, {
-    user: userRows[0],
-    message: 'Registration successful',
+    message: 'Registration successful. Please check your email for the verification code.',
+    email,
   }, 201);
+}));
+
+authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
+  const email = String(req.body.email || '').trim();
+  const otpCode = String(req.body.otp_code || '').trim();
+
+  if (!email || !otpCode) {
+    return sendValidationError(res, { 
+      email: !email ? 'Email is required' : undefined,
+      otp_code: !otpCode ? 'Verification code is required' : undefined
+    });
+  }
+
+  // 1. Check if the OTP is valid and not expired
+  const otpRows = await query(`
+    SELECT * FROM email_otp_verifications 
+    WHERE email = ? AND otp_code = ? AND expires_at > NOW()
+  `, [email, otpCode]);
+
+  if (otpRows.length === 0) {
+    return sendError(res, 'Invalid or expired verification code', 400);
+  }
+
+  const user = await withTransaction(async (connection) => {
+    // 2. Activate user and set verification timestamp
+    await connection.execute(`
+      UPDATE users 
+      SET is_active = TRUE, email_verified_at = NOW() 
+      WHERE email = ?
+    `, [email]);
+
+    // 3. Delete the used OTP
+    await connection.execute('DELETE FROM email_otp_verifications WHERE email = ?', [email]);
+
+    // 4. Fetch the user details
+    const [userRows] = await connection.execute(`
+      SELECT id, email, first_name, last_name, avatar_url, created_at
+      FROM users
+      WHERE email = ?
+    `, [email]);
+
+    const activeUser = userRows[0];
+
+    // 5. Check if user already has an organization (to avoid duplicate processing on retry)
+    const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
+    
+    if (memberCheck.length === 0) {
+      // PROVISION DEFAULT ENVIRONMENT
+      
+      // Create Default Organization
+      const orgName = `${activeUser.first_name}'s Team`;
+      const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
+      
+      const [orgResult] = await connection.execute(`
+        INSERT INTO organizations (name, slug, subscription_tier)
+        VALUES (?, ?, 'free')
+      `, [orgName, orgSlug]);
+      
+      const orgId = orgResult.insertId;
+
+      // Create Default Workspace
+      const wsName = 'General Workspace';
+      const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
+      
+      const [wsResult] = await connection.execute(`
+        INSERT INTO workspaces (organization_id, name, slug)
+        VALUES (?, ?, ?)
+      `, [orgId, wsName, wsSlug]);
+      
+      const wsId = wsResult.insertId;
+
+      // Create Admin Role for this Workspace
+      const [roleResult] = await connection.execute(`
+        INSERT INTO roles (workspace_id, name, description, is_system_role)
+        VALUES (?, 'Admin', 'Full administrative access', 0)
+      `, [wsId]);
+      
+      const roleId = roleResult.insertId;
+
+      // Map all existing permissions to this role
+      const [allPermissions] = await connection.execute('SELECT id FROM permissions');
+      if (allPermissions.length > 0) {
+        const values = allPermissions.map(p => `(${roleId}, ${p.id})`).join(', ');
+        await connection.execute(`
+          INSERT INTO role_permissions (role_id, permission_id)
+          VALUES ${values}
+        `);
+      }
+
+      // Add user as the workspace member (admin)
+      await connection.execute(`
+        INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
+        VALUES (?, ?, ?, 'admin')
+      `, [wsId, activeUser.id, roleId]);
+    }
+
+    return activeUser;
+  });
+
+  // Log the user in (set session)
+  req.session.user_id = user.id;
+  req.session.user_email = user.email;
+
+  return sendSuccess(res, {
+    user,
+    message: 'Email verified successfully. Your workspace has been set up.',
+  });
+}));
+
+authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
+  const email = String(req.body.email || '').trim();
+
+  if (!email) {
+    return sendValidationError(res, { email: 'Email is required' });
+  }
+
+  // Check if user exists and is not already active
+  const userRows = await query('SELECT first_name, is_active FROM users WHERE email = ?', [email]);
+  if (userRows.length === 0) {
+    return sendError(res, 'User not found', 404);
+  }
+  
+  if (userRows[0].is_active) {
+    return sendError(res, 'Email is already verified', 400);
+  }
+
+  // Delete any existing OTPs for this email
+  await query('DELETE FROM email_otp_verifications WHERE email = ?', [email]);
+
+  // Generate new 6-digit OTP
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+  await query(`
+    INSERT INTO email_otp_verifications (email, otp_code, expires_at)
+    VALUES (?, ?, ?)
+  `, [email, otpCode, expiresAt]);
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #4f46e5;">New Verification Code</h2>
+      <p>Hi ${userRows[0].first_name},</p>
+      <p>You requested a new verification code. Please use the following code to activate your Zentrix account:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
+      </div>
+      <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This code will expire in 10 minutes.</p>
+    </div>
+  `;
+
+  await sendMail({
+    to: email,
+    subject: 'Zentrix - Your New Verification Code',
+    html: htmlContent,
+  });
+
+  return sendSuccess(res, { message: 'New verification code sent successfully.' });
 }));
 
 authRouter.post('/logout', asyncHandler(async (req, res) => {
