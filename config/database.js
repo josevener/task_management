@@ -25,10 +25,12 @@ async function withTransaction(callback) {
     const result = await callback(connection);
     await connection.commit();
     return result;
-  } catch (error) {
+  }
+  catch (error) {
     await connection.rollback();
     throw error;
-  } finally {
+  }
+  finally {
     connection.release();
   }
 }
