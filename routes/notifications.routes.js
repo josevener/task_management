@@ -3,10 +3,31 @@ const { query } = require('../config/database');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendSuccess, sendError } = require('../utils/responses');
+const sseManager = require('../utils/sse-manager');
 
 const notificationsRouter = express.Router();
 
 notificationsRouter.use(attachCurrentUser, requireAuth);
+
+// SSE endpoint for real-time notifications
+notificationsRouter.get('/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  // Keep connection open
+  res.write('retry: 10000\n\n');
+
+  // Register the client
+  sseManager.addClient(req.currentUser.id, res);
+
+  // Clean up on disconnect
+  req.on('close', () => {
+    sseManager.removeClient(req.currentUser.id, res);
+  });
+});
 
 // Get all notifications for the current user
 notificationsRouter.get('/', asyncHandler(async (req, res) => {

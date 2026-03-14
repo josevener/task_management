@@ -16,12 +16,30 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/lib/toast";
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const { showToast } = useToast();
+
+  const playNotificationSound = () => {
+    if (!soundEnabled) return;
+    try {
+      const audio = new Audio('/notification.mp3');
+      audio.volume = 0.5;
+      audio.play().catch(e => {
+        // Browser might block autoplay until user interacts
+        console.log("Audio play prevented by browser:", e);
+      });
+    }
+    catch (e) {
+      console.error("Could not play sound:", e);
+    }
+  };
 
   const fetchNotifications = async () => {
     setLoading(true);
@@ -44,10 +62,32 @@ export function NotificationBell() {
   useEffect(() => {
     fetchNotifications();
 
-    // Refresh every minute
+    // Refresh every minute to keep relative timestamps updated
     const interval = setInterval(fetchNotifications, 60000);
-    return () => clearInterval(interval);
-  }, []);
+
+    // Set up Server-Sent Events listener for real-time notifications
+    const unsubscribe = notificationApi.listenForRealTime((newNotif: Notification) => {
+      setNotifications((prev) => [newNotif, ...prev]);
+      setUnreadCount((prev) => prev + 1);
+
+      // Determine toast type based on notification type
+      let toastType: 'info' | 'success' | 'warning' | 'error' = 'info';
+      if (newNotif.type === 'task_overdue') {
+        toastType = 'warning';
+      }
+      else if (newNotif.type === 'task_status_changed') {
+        toastType = 'success';
+      }
+
+      showToast(`New: ${newNotif.title}`, toastType);
+      playNotificationSound();
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
+  }, [showToast, soundEnabled]);
 
   const handleMarkAsRead = async (id: number) => {
     try {

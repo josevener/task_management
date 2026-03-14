@@ -38,4 +38,37 @@ export const notificationApi = {
     const response = await api.apiPost<{ message: string }>("/notifications/read-all");
     return { success: true, data: response };
   },
+
+  listenForRealTime: (onNotification: (notification: Notification) => void) => {
+    // Only connect in browser environment
+    if (typeof window === 'undefined') return () => { };
+
+    // For simplicity, we create the EventSource pointing directly to the stream endpoint.
+    // In a prod app, we might proxy this or attach tokens to headers if supported.
+    // Here relying on cookies/credentials since frontend and backend share domain.
+    const url = process.env.NEXT_PUBLIC_API_URL
+      ? `${process.env.NEXT_PUBLIC_API_URL}/notifications/stream`
+      : 'http://localhost:8500/api/notifications/stream';
+
+    const eventSource = new EventSource(url, { withCredentials: true });
+
+    eventSource.addEventListener('new_notification', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onNotification(data);
+      }
+      catch (err) {
+        console.log(`${new Date().toISOString()} >> Error parsing real-time notification`, err, event);
+      }
+    });
+
+    eventSource.onerror = (error) => {
+      console.log(`${new Date().toISOString()} >> SSE connection error:`, error);
+      // EventSource automatically attempts to reconnect
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  },
 };

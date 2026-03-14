@@ -5,6 +5,7 @@ const { attachCurrentUser, requireAuth, checkPermission } = require('../middlewa
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { buildUpdateClause, isValidDate } = require('../utils/validation');
+const sseManager = require('../utils/sse-manager');
 
 const tasksRouter = express.Router();
 
@@ -39,7 +40,8 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
 
     conditions.push('t.project_id = ?');
     params.push(req.query.project_id);
-  } else {
+  }
+  else {
     conditions.push(`EXISTS (
       SELECT 1
       FROM projects p2
@@ -53,7 +55,8 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.query, 'parent_task_id')) {
     if (req.query.parent_task_id === '') {
       conditions.push('t.parent_task_id IS NULL');
-    } else {
+    }
+    else {
       conditions.push('t.parent_task_id = ?');
       params.push(req.query.parent_task_id);
     }
@@ -147,7 +150,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   }
   if (!title) {
     errors.title = 'Task title is required';
-  } else if (title.length > 500) {
+  }
+  else if (title.length > 500) {
     errors.title = 'Task title must be 500 characters or less';
   }
   if (!['todo', 'in_progress', 'review', 'done', 'cancelled'].includes(status)) {
@@ -176,7 +180,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   if (project_id) {
     if (!project) {
       errors.project_id = 'Project access denied';
-    } else {
+    }
+    else {
       const canCreate = await checkPermission(project.workspace_id, req.currentUser.id, 'tasks:create');
       if (!canCreate) {
         errors.project_id = 'You do not have permission to create tasks in this workspace';
@@ -253,6 +258,19 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
         INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
         VALUES (?, 'task_assigned', ?, ?, ?, ?, ?)
       `, [assignee_id, `New task assigned: ${title}`, 'You have been assigned to a new task', project.workspace_id, project_id, taskResult.insertId]);
+
+      // Get the newly created notification to broadcast it
+      const [newNotif] = await connection.execute(`
+        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
+        FROM notifications n
+        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
+        LEFT JOIN projects p ON n.related_project_id = p.id
+        WHERE n.id = LAST_INSERT_ID()
+      `, [title]);
+
+      if (newNotif[0]) {
+        sseManager.broadcastToUser(assignee_id, 'new_notification', newNotif[0]);
+      }
     }
 
     const [taskRows] = await connection.execute(`
@@ -396,6 +414,51 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
         existingTask.project_id,
         req.params.id,
       ]);
+
+      const [newNotif] = await connection.execute(`
+        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
+        FROM notifications n
+        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
+        LEFT JOIN projects p ON n.related_project_id = p.id
+        WHERE n.id = LAST_INSERT_ID()
+      `, [taskTitleRows[0].title]);
+
+      if (newNotif[0]) {
+        sseManager.broadcastToUser(req.body.assignee_id, 'new_notification', newNotif[0]);
+      }
+    }
+
+    // New notification for status change
+    if (Object.prototype.hasOwnProperty.call(req.body, 'status') &&
+      req.body.status !== existingTask.status &&
+      existingTask.assignee_id &&
+      Number(existingTask.assignee_id) !== Number(req.currentUser.id)) {
+      const [projectRows] = await connection.execute('SELECT name FROM projects WHERE id = ?', [existingTask.project_id]);
+      const [taskTitleRows] = await connection.execute('SELECT title FROM tasks WHERE id = ?', [req.params.id]);
+
+      await connection.execute(`
+        INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
+        VALUES (?, 'task_status_changed', ?, ?, ?, ?, ?)
+      `, [
+        existingTask.assignee_id,
+        `Task status changed: ${taskTitleRows[0].title}`,
+        `The status is now '${req.body.status}'`,
+        existingTask.workspace_id,
+        existingTask.project_id,
+        req.params.id,
+      ]);
+
+      const [newNotif] = await connection.execute(`
+        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
+        FROM notifications n
+        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
+        LEFT JOIN projects p ON n.related_project_id = p.id
+        WHERE n.id = LAST_INSERT_ID()
+      `, [taskTitleRows[0].title]);
+
+      if (newNotif[0]) {
+        sseManager.broadcastToUser(existingTask.assignee_id, 'new_notification', newNotif[0]);
+      }
     }
   });
 
