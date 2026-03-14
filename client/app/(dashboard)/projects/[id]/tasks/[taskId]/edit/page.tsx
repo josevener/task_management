@@ -149,7 +149,8 @@ export default function EditTaskPage() {
                 status: task.status || 'todo',
                 priority: task.priority || 'medium',
                 due_date: task.due_date ? task.due_date.split('T')[0] : '',
-                assignee_id: task.assignee_id || 'none'
+                assignee_id: task.assignee_id || 'none',
+                project_id: task.project_id || projectId
               }}
               members={members}
               onSubmit={handleSubmit}

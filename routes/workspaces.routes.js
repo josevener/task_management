@@ -1,12 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 
+const crypto = require('crypto');
 const { query, withTransaction } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
 const { buildUpdateClause } = require('../utils/validation');
+const { sendMail } = require('../utils/mailer');
 
 const workspacesRouter = express.Router();
 
@@ -276,6 +278,9 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     return sendValidationError(res, errors);
   }
 
+  const [workspaceRows] = await query('SELECT name FROM workspaces WHERE id = ?', [req.params.workspaceId]);
+  const workspaceName = workspaceRows ? workspaceRows.name : 'Workspace';
+
   const member = await withTransaction(async (connection) => {
     let user_id_to_add;
 
@@ -290,18 +295,71 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 
       const password_hash = await bcrypt.hash(String(req.body.password), 10);
       const [userResult] = await connection.execute(`
-        INSERT INTO users (email, password_hash, first_name, last_name)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (email, password_hash, first_name, last_name, is_active)
+        VALUES (?, ?, ?, ?, FALSE)
       `, [email, password_hash, String(req.body.first_name).trim(), String(req.body.last_name).trim()]);
       user_id_to_add = userResult.insertId;
+
+      // Token Generation
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 48); // 48 hours expiry for invitations
+      await connection.execute(`
+        INSERT INTO email_verification_tokens (email, token, expires_at)
+        VALUES (?, ?, ?)
+      `, [email, token, expiresAt]);
+
+      // Verification Link
+      const verifyLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+      // Verification Email
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
+          <p>Hi ${req.body.first_name},</p>
+          <p><strong>${req.currentUser.first_name} ${req.currentUser.last_name}</strong> has invited you to join the <strong>${workspaceName}</strong> workspace.</p>
+          <p>Please click the button below to verify your email address and activate your account:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify & Join Workspace</a>
+          </div>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #64748b; font-size: 14px;">${verifyLink}</p>
+          <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This link will expire in 48 hours.</p>
+        </div>
+      `;
+      await sendMail({
+        to: email,
+        subject: `Zentrix - Invitation to ${workspaceName}`,
+        html: htmlContent
+      });
+
     } else {
-      const [users] = await connection.execute('SELECT id FROM users WHERE email = ?', [email]);
+      const [users] = await connection.execute('SELECT id, first_name FROM users WHERE email = ?', [email]);
       if (!users[0]) {
         const error = new Error('No user found with that email address. They must register first.');
         error.statusCode = 400;
         throw error;
       }
       user_id_to_add = users[0].id;
+      const userName = users[0].first_name;
+
+      // Notification Email for existing user
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #4f46e5;">New Workspace Added!</h2>
+          <p>Hi ${userName},</p>
+          <p><strong>${req.currentUser.first_name} ${req.currentUser.last_name}</strong> has added you to the <strong>${workspaceName}</strong> workspace.</p>
+          <p>You can now access its projects and tasks from your dashboard.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.APP_ORIGIN || 'http://localhost:3000'}/dashboard" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+          </div>
+        </div>
+      `;
+      await sendMail({
+        to: email,
+        subject: `Zentrix - New Workspace: ${workspaceName}`,
+        html: htmlContent
+      });
     }
 
     const [existingMemberships] = await connection.execute(`
@@ -316,8 +374,13 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 
     const [membershipResult] = await connection.execute(`
       INSERT INTO workspace_members (workspace_id, user_id, role_id)
-      VALUES (?, ?, (SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?) LIMIT 1))
-    `, [req.params.workspaceId, user_id_to_add, req.params.workspaceId, role]);
+      VALUES (?, ?, 
+        CASE 
+          WHEN ? REGEXP '^[0-9]+$' THEN ?
+          ELSE (SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?) LIMIT 1)
+        END
+      )
+    `, [req.params.workspaceId, user_id_to_add, role, role, req.params.workspaceId, role]);
 
     const [rows] = await connection.execute(`
       SELECT wm.id AS membership_id, r.name AS role, wm.created_at,

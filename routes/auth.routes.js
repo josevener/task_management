@@ -111,26 +111,30 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     VALUES (?, ?, ?, ?, FALSE)
   `, [email, password_hash, first_name, last_name]);
 
-  // Generate 6-digit OTP
-  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate 64-char hex token
+  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date();
-  expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
+  expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
 
   await query(`
-    INSERT INTO email_otp_verifications (email, otp_code, expires_at)
+    INSERT INTO email_verification_tokens (email, token, expires_at)
     VALUES (?, ?, ?)
-  `, [email, otpCode, expiresAt]);
+  `, [email, token, expiresAt]);
 
-  // Send OTP via email
+  // Send Verification Link via email
+  const verifyLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+  
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
       <p>Hi ${first_name},</p>
-      <p>Thank you for signing up. Please use the following One-Time Password (OTP) to verify your email address and activate your account:</p>
+      <p>Thank you for signing up. Please click the button below to verify your email address and activate your account:</p>
       <div style="text-align: center; margin: 30px 0;">
-        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
+        <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify Email Address</a>
       </div>
-      <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+      <p>Or copy and paste this link into your browser:</p>
+      <p style="word-break: break-all; color: #64748b; font-size: 14px;">${verifyLink}</p>
+      <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This link will expire in 24 hours. If you did not request this, please ignore this email.</p>
     </div>
   `;
 
@@ -141,9 +145,109 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
   });
 
   return sendSuccess(res, {
-    message: 'Registration successful. Please check your email for the verification code.',
+    message: 'Registration successful. Please check your email for the verification link.',
     email,
   }, 201);
+}));
+
+authRouter.post('/verify-token', asyncHandler(async (req, res) => {
+  const email = String(req.body.email || '').trim();
+  const token = String(req.body.token || '').trim();
+
+  if (!email || !token) {
+    return sendValidationError(res, { 
+      email: !email ? 'Email is required' : undefined,
+      token: !token ? 'Verification token is required' : undefined
+    });
+  }
+
+  // 1. Check if the token is valid and not expired
+  const tokenRows = await query(`
+    SELECT * FROM email_verification_tokens 
+    WHERE email = ? AND token = ? AND expires_at > NOW()
+  `, [email, token]);
+
+  if (tokenRows.length === 0) {
+    return sendError(res, 'Invalid or expired verification link', 400);
+  }
+
+  const user = await withTransaction(async (connection) => {
+    // 2. Activate user and set verification timestamp
+    await connection.execute(`
+      UPDATE users 
+      SET is_active = TRUE, email_verified_at = NOW() 
+      WHERE email = ?
+    `, [email]);
+
+    // 3. Delete the used token
+    await connection.execute('DELETE FROM email_verification_tokens WHERE email = ?', [email]);
+
+    // 4. Fetch the user details
+    const [userRows] = await connection.execute(`
+      SELECT id, email, first_name, last_name, avatar_url, created_at
+      FROM users
+      WHERE email = ?
+    `, [email]);
+
+    const activeUser = userRows[0];
+
+    // 5. Provision environment if first time
+    const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
+    
+    if (memberCheck.length === 0) {
+      // PROVISION DEFAULT ENVIRONMENT
+      const orgName = `${activeUser.first_name}'s Team`;
+      const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
+      
+      const [orgResult] = await connection.execute(`
+        INSERT INTO organizations (name, slug, subscription_tier)
+        VALUES (?, ?, 'free')
+      `, [orgName, orgSlug]);
+      
+      const orgId = orgResult.insertId;
+
+      const wsName = 'General Workspace';
+      const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
+      
+      const [wsResult] = await connection.execute(`
+        INSERT INTO workspaces (organization_id, name, slug)
+        VALUES (?, ?, ?)
+      `, [orgId, wsName, wsSlug]);
+      
+      const wsId = wsResult.insertId;
+
+      const [roleResult] = await connection.execute(`
+        INSERT INTO roles (workspace_id, name, description, is_system_role)
+        VALUES (?, 'Admin', 'Full administrative access', 0)
+      `, [wsId]);
+      
+      const roleId = roleResult.insertId;
+
+      const [allPermissions] = await connection.execute('SELECT id FROM permissions');
+      if (allPermissions.length > 0) {
+        const values = allPermissions.map(p => `(${roleId}, ${p.id})`).join(', ');
+        await connection.execute(`
+          INSERT INTO role_permissions (role_id, permission_id)
+          VALUES ${values}
+        `);
+      }
+
+      await connection.execute(`
+        INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
+        VALUES (?, ?, ?, 'admin')
+      `, [wsId, activeUser.id, roleId]);
+    }
+
+    return activeUser;
+  });
+
+  req.session.user_id = user.id;
+  req.session.user_email = user.email;
+
+  return sendSuccess(res, {
+    user,
+    message: 'Email verified successfully. Welcome to Zentrix!',
+  });
 }));
 
 authRouter.post('/verify-otp', asyncHandler(async (req, res) => {

@@ -14,9 +14,11 @@ function VerifyEmailForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const email = searchParams.get('email') || '';
+  const token = searchParams.get('token') || '';
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
+  const [autoVerifying, setAutoVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [cooldown, setCooldown] = useState(0);
@@ -25,10 +27,31 @@ function VerifyEmailForm() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    if (!email) {
+    if (!email && !token) {
       router.push('/register');
     }
-  }, [email, router]);
+  }, [email, token, router]);
+
+  // Auto-verify if token is present
+  useEffect(() => {
+    const autoVerify = async () => {
+      if (token && email) {
+        setAutoVerifying(true);
+        setLoading(true);
+        try {
+          await apiPost('/auth/verify-token', { email, token });
+          showToast('Email verified successfully! Welcome to Zentrix.', 'success');
+          router.push('/dashboard');
+        }
+        catch (error: any) {
+          showToast(error.message || 'Verification link is invalid or expired.', 'error');
+          setAutoVerifying(false);
+          setLoading(false);
+        }
+      }
+    };
+    autoVerify();
+  }, [token, email, router, showToast]);
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -131,6 +154,27 @@ function VerifyEmailForm() {
       setResending(false);
     }
   };
+
+  if (autoVerifying) {
+    return (
+      <div className="flex w-full flex-col items-center justify-center p-8 lg:w-1/2">
+        <div className="w-full max-w-[420px] text-center space-y-6">
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="h-24 w-24 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <CheckCircle2 className="h-10 w-10 text-indigo-500/50" />
+              </div>
+            </div>
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground italic">Verifying your account</h2>
+          <p className="text-muted-foreground">
+            Please wait while we complete your activation. You will be redirected shortly.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full items-center justify-center p-8 sm:p-12 lg:w-1/2 lg:p-16">

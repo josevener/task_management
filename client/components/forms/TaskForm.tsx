@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, CalendarIcon } from "lucide-react";
+import { Loader2, CalendarIcon, LayoutGrid } from "lucide-react";
 
 interface TaskFormProps {
   initialData?: {
@@ -16,7 +16,9 @@ interface TaskFormProps {
     priority: string;
     due_date: string;
     assignee_id: string | number;
+    project_id?: string | number;
   };
+  projects?: { id: number | string; name: string }[];
   members: { id: number | string; first_name: string; last_name: string }[];
   onSubmit: (data: {
     title: string;
@@ -25,17 +27,21 @@ interface TaskFormProps {
     priority: string;
     due_date: string;
     assignee_id: string | number;
+    project_id?: string | number;
   }) => Promise<void>;
   onCancel: () => void;
+  onProjectChange?: (projectId: string) => void;
   isSubmitting: boolean;
   submitLabel: string;
 }
 
 export function TaskForm({
   initialData,
+  projects = [],
   members = [],
   onSubmit,
   onCancel,
+  onProjectChange,
   isSubmitting,
   submitLabel,
 }: TaskFormProps) {
@@ -46,6 +52,7 @@ export function TaskForm({
     priority: initialData?.priority || "medium",
     due_date: initialData?.due_date || "",
     assignee_id: initialData?.assignee_id || "none",
+    project_id: initialData?.project_id || "none",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -55,17 +62,52 @@ export function TaskForm({
 
   const handleSelectChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (name === 'project_id' && onProjectChange) {
+      onProjectChange(value);
+      // Reset assignee when project changes unless it's initial load/specific case
+      setFormData(prev => ({ ...prev, assignee_id: "none" }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) return;
+
+    // If projects are provided, project_id must be selected
+    if (projects.length > 0 && (formData.project_id === "none" || !formData.project_id)) {
+      return;
+    }
+
     onSubmit(formData);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid gap-4">
+        {/* Project Selection (Conditional) */}
+        {projects.length > 0 && (
+          <div className="space-y-2">
+            <Label htmlFor="project_id">Project <span className="text-red-500">*</span></Label>
+            <Select value={String(formData.project_id)} onValueChange={(val) => handleSelectChange('project_id', val)}>
+              <SelectTrigger id="project_id" className="bg-white border-blue-200">
+                <div className="flex items-center gap-2">
+                  <LayoutGrid className="h-4 w-4 text-blue-500" />
+                  <SelectValue placeholder="Select a project" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" disabled>Select a project</SelectItem>
+                {projects.map(project => (
+                  <SelectItem key={project.id} value={String(project.id)}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
           <Input
@@ -125,9 +167,13 @@ export function TaskForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="assignee">Assignee</Label>
-            <Select value={String(formData.assignee_id)} onValueChange={(val) => handleSelectChange('assignee_id', val)}>
+            <Select
+              value={String(formData.assignee_id)}
+              onValueChange={(val) => handleSelectChange('assignee_id', val)}
+              disabled={projects.length > 0 && formData.project_id === "none"}
+            >
               <SelectTrigger id="assignee" className="bg-white">
-                <SelectValue placeholder="Unassigned" />
+                <SelectValue placeholder={projects.length > 0 && formData.project_id === "none" ? "Select project first" : "Unassigned"} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Unassigned</SelectItem>
@@ -158,19 +204,19 @@ export function TaskForm({
       </div>
 
       <div className="flex justify-end gap-3 mt-8 pt-6 border-t px-6 py-4 bg-slate-50/50 rounded-b-xl">
-        <Button 
-          type="button" 
-          variant="outline" 
+        <Button
+          type="button"
+          variant="outline"
           className="cursor-pointer"
           onClick={onCancel}
           disabled={isSubmitting}
         >
           Cancel
         </Button>
-        <Button 
-          type="submit" 
-          className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer" 
-          disabled={isSubmitting || !formData.title.trim()}
+        <Button
+          type="submit"
+          className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+          disabled={isSubmitting || !formData.title.trim() || (projects.length > 0 && formData.project_id === "none")}
         >
           {isSubmitting ? (
             <>

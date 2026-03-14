@@ -37,13 +37,13 @@ export async function getWorkspaceMembers(workspaceId: number): Promise<Workspac
 export async function addWorkspaceMember(
   workspaceId: number,
   email: string,
-  role: string = 'member',
+  roleOrId: string = 'member',
   action: 'invite' | 'create' = 'invite',
   additionalData?: { first_name?: string; last_name?: string; password?: string }
 ): Promise<WorkspaceMemberResponse> {
   return apiPost<WorkspaceMemberResponse>(`/workspaces/${workspaceId}/members`, {
     email,
-    role,
+    role: roleOrId,
     action,
     ...additionalData
   });

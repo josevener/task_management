@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Trash2, Plus, Loader2, Users, Edit2 } from "lucide-react";
 import Link from "next/link";
+import { InviteMemberModal } from "@/components/modals/InviteMemberModal";
 
 export default function WorkspaceMembersPage() {
   const { id } = useParams();
@@ -26,6 +27,7 @@ export default function WorkspaceMembersPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<number | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
   useEffect(() => {
     if (!wsLoading && activeWorkspace && activeWorkspace.id.toString() !== id) {
@@ -101,11 +103,10 @@ export default function WorkspaceMembersPage() {
         </div>
         {hasPermission('members:invite') && (
           <Button
-            asChild
-            className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer">
-            <Link href={`/workspaces/${id}/members/new`}>
-              <Plus className="h-4 w-4 mr-2" /> Add Member
-            </Link>
+            onClick={() => setIsInviteModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto cursor-pointer"
+          >
+            <Plus className="h-4 w-4 mr-2" /> Add Member
           </Button>
         )}
       </div>
@@ -199,6 +200,13 @@ export default function WorkspaceMembersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <InviteMemberModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        workspaceId={Number(id)}
+        onSuccess={fetchMembers}
+      />
     </div>
   );
 }

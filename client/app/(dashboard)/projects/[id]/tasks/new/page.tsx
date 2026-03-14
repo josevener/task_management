@@ -77,6 +77,15 @@ export default function CreateTaskPage() {
         </CardHeader>
         <CardContent>
           <TaskForm
+            initialData={{
+              title: "",
+              description: "",
+              status: "todo",
+              priority: "medium",
+              due_date: "",
+              assignee_id: "none",
+              project_id: projectId
+            }}
             members={members}
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/projects/${projectId}`)}
