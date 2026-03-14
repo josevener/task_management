@@ -17,7 +17,6 @@ export default function EditWorkspaceMemberPage() {
   const router = useRouter();
   const { loading: wsLoading, hasPermission } = useWorkspace();
   const { showToast } = useToast();
-  const workspaceId = Number(id);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,9 +50,11 @@ export default function EditWorkspaceMemberPage() {
         }
 
         setMember(targetMember);
-      } catch (err: any) {
+      }
+      catch (err: any) {
         showToast("Failed to load member details", "error");
-      } finally {
+      }
+      finally {
         setIsLoading(false);
       }
     }
@@ -92,7 +93,7 @@ export default function EditWorkspaceMemberPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 flex flex-col w-full">
+    <div className="max-w-7xl mx-auto space-y-4 flex flex-col w-full">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild className="cursor-pointer">
           <Link href={`/workspaces/${id}/members`}>

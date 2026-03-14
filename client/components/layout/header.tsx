@@ -14,9 +14,11 @@ import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  isSidebarCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick, isSidebarCollapsed, onToggleCollapse }: HeaderProps) {
   const { user, logout } = useAuth();
 
   const getInitials = (firstName: string, lastName: string) => {
@@ -26,14 +28,26 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full shrink-0 items-center justify-between border-b bg-white px-4 md:px-6">
       <div className="flex items-center gap-4">
+        {/* Mobile menu button */}
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden"
+          className="md:hidden cursor-pointer"
           onClick={onMenuClick}
         >
           <Menu className="h-5 w-5" />
           <span className="sr-only">Toggle Sidebar</span>
+        </Button>
+
+        {/* Desktop toggle button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden md:flex text-slate-500 hover:text-slate-900 cursor-pointer"
+          onClick={onToggleCollapse}
+        >
+          <Menu className="h-5 w-5" />
+          <span className="sr-only">{isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}</span>
         </Button>
       </div>
 
