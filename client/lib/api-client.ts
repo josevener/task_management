@@ -7,7 +7,7 @@ import axios from 'axios';
  * Uses axios so request configuration and error handling stay consistent.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8500/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8500/api';
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
