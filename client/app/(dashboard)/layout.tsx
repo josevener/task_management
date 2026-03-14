@@ -18,12 +18,6 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [user, loading, router]);
-
   // Close sidebar when route changes on mobile
   useEffect(() => {
     setSidebarOpen(false);
