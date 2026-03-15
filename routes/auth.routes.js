@@ -45,9 +45,9 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   }
 
   if (!user.is_active) {
-    return sendError(res, 'Your email address is not verified. Please check your email for the verification code.', 403, { 
+    return sendError(res, 'Your email address is not verified. Please check your email for the verification code.', 403, {
       needs_verification: true,
-      email: user.email 
+      email: user.email
     });
   }
 
@@ -123,7 +123,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 
   // Send Verification Link via email
   const verifyLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
-  
+
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
@@ -155,7 +155,7 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
   const token = String(req.body.token || '').trim();
 
   if (!email || !token) {
-    return sendValidationError(res, { 
+    return sendValidationError(res, {
       email: !email ? 'Email is required' : undefined,
       token: !token ? 'Verification token is required' : undefined
     });
@@ -172,12 +172,32 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
   }
 
   const user = await withTransaction(async (connection) => {
-    // 2. Activate user and set verification timestamp
-    await connection.execute(`
-      UPDATE users 
-      SET is_active = TRUE, email_verified_at = NOW() 
-      WHERE email = ?
-    `, [email]);
+    // 2. Activate user and set verification timestamp.
+    // If a password is provided, update it as well.
+    const password = String(req.body.password || '').trim();
+    if (password) {
+      if (password.length < 8) {
+        const error = new Error('Password must be at least 8 characters long');
+        error.statusCode = 422;
+        error.payload = { password: 'Password must be at least 8 characters long' };
+        throw error;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      await connection.execute(`
+        UPDATE users 
+        SET is_active = TRUE, email_verified_at = NOW(), password_hash = ?
+        WHERE email = ?
+      `, [passwordHash, email]);
+    }
+    else {
+      await connection.execute(`
+        UPDATE users 
+        SET is_active = TRUE, email_verified_at = NOW() 
+        WHERE email = ?
+      `, [email]);
+    }
 
     // 3. Delete the used token
     await connection.execute('DELETE FROM email_verification_tokens WHERE email = ?', [email]);
@@ -193,34 +213,34 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
 
     // 5. Provision environment if first time
     const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
-    
+
     if (memberCheck.length === 0) {
       // PROVISION DEFAULT ENVIRONMENT
       const orgName = `${activeUser.first_name}'s Team`;
       const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
-      
+
       const [orgResult] = await connection.execute(`
         INSERT INTO organizations (name, slug, subscription_tier)
         VALUES (?, ?, 'free')
       `, [orgName, orgSlug]);
-      
+
       const orgId = orgResult.insertId;
 
       const wsName = 'General Workspace';
       const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
-      
+
       const [wsResult] = await connection.execute(`
         INSERT INTO workspaces (organization_id, name, slug)
         VALUES (?, ?, ?)
       `, [orgId, wsName, wsSlug]);
-      
+
       const wsId = wsResult.insertId;
 
       const [roleResult] = await connection.execute(`
         INSERT INTO roles (workspace_id, name, description, is_system_role)
         VALUES (?, 'Admin', 'Full administrative access', 0)
       `, [wsId]);
-      
+
       const roleId = roleResult.insertId;
 
       const [allPermissions] = await connection.execute('SELECT id FROM permissions');
@@ -250,12 +270,32 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
   });
 }));
 
+authRouter.get('/check-token', asyncHandler(async (req, res) => {
+  const email = String(req.query.email || '').trim();
+  const token = String(req.query.token || '').trim();
+
+  if (!email || !token) {
+    return sendError(res, 'Missing email or token', 400);
+  }
+
+  const tokenRows = await query(`
+    SELECT * FROM email_verification_tokens 
+    WHERE email = ? AND token = ? AND expires_at > NOW()
+  `, [email, token]);
+
+  if (tokenRows.length === 0) {
+    return sendError(res, 'Invalid or expired verification link', 400);
+  }
+
+  return sendSuccess(res, { message: 'Token is valid' });
+}));
+
 authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim();
   const otpCode = String(req.body.otp_code || '').trim();
 
   if (!email || !otpCode) {
-    return sendValidationError(res, { 
+    return sendValidationError(res, {
       email: !email ? 'Email is required' : undefined,
       otp_code: !otpCode ? 'Verification code is required' : undefined
     });
@@ -293,30 +333,30 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
 
     // 5. Check if user already has an organization (to avoid duplicate processing on retry)
     const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
-    
+
     if (memberCheck.length === 0) {
       // PROVISION DEFAULT ENVIRONMENT
-      
+
       // Create Default Organization
       const orgName = `${activeUser.first_name}'s Team`;
       const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
-      
+
       const [orgResult] = await connection.execute(`
         INSERT INTO organizations (name, slug, subscription_tier)
         VALUES (?, ?, 'free')
       `, [orgName, orgSlug]);
-      
+
       const orgId = orgResult.insertId;
 
       // Create Default Workspace
       const wsName = 'General Workspace';
       const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
-      
+
       const [wsResult] = await connection.execute(`
         INSERT INTO workspaces (organization_id, name, slug)
         VALUES (?, ?, ?)
       `, [orgId, wsName, wsSlug]);
-      
+
       const wsId = wsResult.insertId;
 
       // Create Admin Role for this Workspace
@@ -324,7 +364,7 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
         INSERT INTO roles (workspace_id, name, description, is_system_role)
         VALUES (?, 'Admin', 'Full administrative access', 0)
       `, [wsId]);
-      
+
       const roleId = roleResult.insertId;
 
       // Map all existing permissions to this role
@@ -369,7 +409,7 @@ authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
   if (userRows.length === 0) {
     return sendError(res, 'User not found', 404);
   }
-  
+
   if (userRows[0].is_active) {
     return sendError(res, 'Email is already verified', 400);
   }

@@ -63,7 +63,6 @@ export function InviteMemberModal({
         {
           first_name: data.first_name,
           last_name: data.last_name,
-          password: "tempPassword123!" // backend should handle secure defaults or notify user
         }
       );
 
@@ -72,7 +71,12 @@ export function InviteMemberModal({
       onClose();
     }
     catch (error: any) {
-      showToast(error.message || "Failed to invite member", "error");
+      if (error.errors && error.errors.email) {
+        showToast(error.errors.email, "error");
+      }
+      else {
+        showToast(error.message || "Failed to invite member", "error");
+      }
     }
     finally {
       setIsSubmitting(false);

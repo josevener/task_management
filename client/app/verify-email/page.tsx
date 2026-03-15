@@ -3,11 +3,11 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Layers, Loader2, Mail, CheckCircle2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Layers, Loader2, Mail, CheckCircle2, ArrowLeft, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiClientError, apiPost } from '@/lib/api-client';
+import { ApiClientError, apiPost, apiGet } from '@/lib/api-client';
 import { useToast } from '@/lib/toast';
 
 function VerifyEmailForm() {
@@ -17,8 +17,9 @@ function VerifyEmailForm() {
   const token = searchParams.get('token') || '';
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [autoVerifying, setAutoVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [cooldown, setCooldown] = useState(0);
@@ -32,26 +33,20 @@ function VerifyEmailForm() {
     }
   }, [email, token, router]);
 
-  // Auto-verify if token is present
   useEffect(() => {
-    const autoVerify = async () => {
+    const checkToken = async () => {
       if (token && email) {
-        setAutoVerifying(true);
-        setLoading(true);
         try {
-          await apiPost('/auth/verify-token', { email, token });
-          showToast('Email verified successfully! Welcome to Zentrix.', 'success');
-          router.push('/dashboard');
+          // Add apiGet to imports if not there, or use axios directly via apiGet
+          await apiGet(`/auth/check-token?email=${encodeURIComponent(email)}&token=${token}`);
         }
         catch (error: any) {
-          showToast(error.message || 'Verification link is invalid or expired.', 'error');
-          setAutoVerifying(false);
-          setLoading(false);
+          setErrors({ form: error.message || 'Verification link is invalid or expired.' });
         }
       }
     };
-    autoVerify();
-  }, [token, email, router, showToast]);
+    checkToken();
+  }, [token, email]);
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -102,28 +97,34 @@ function VerifyEmailForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const otpCode = otp.join('');
-
-    if (otpCode.length < 6) {
-      setErrors({ otp: 'Please enter all 6 digits' });
-      return;
-    }
-
     setLoading(true);
     setErrors({});
 
     try {
-      await apiPost('/auth/verify-otp', { email, otp_code: otpCode });
-      showToast('Email verified successfully!', 'success');
+      if (token) {
+        if (password.length < 8) {
+          setErrors({ password: 'Password must be at least 8 characters long' });
+          setLoading(false);
+          return;
+        }
+        await apiPost('/auth/verify-token', { email, token, password });
+        showToast('Account activated successfully! Welcome to Zentrix.', 'success');
+      } else {
+        const otpCode = otp.join('');
+        if (otpCode.length < 6) {
+          setErrors({ otp: 'Please enter all 6 digits' });
+          setLoading(false);
+          return;
+        }
+        await apiPost('/auth/verify-otp', { email, otp_code: otpCode });
+        showToast('Email verified successfully!', 'success');
+      }
       router.push('/dashboard');
     }
     catch (error) {
       if (error instanceof ApiClientError) {
-        if (error.status === 400 || error.status === 404) {
-          setErrors({ form: error.message });
-        }
-        else if (error.errors) {
-          setErrors(error.errors);
+        if (error.status === 400 || error.status === 404 || error.status === 422) {
+          setErrors(error.errors || { form: error.message });
         }
         else {
           showToast(error.message || 'Verification failed. Please try again.', 'error');
@@ -155,27 +156,6 @@ function VerifyEmailForm() {
     }
   };
 
-  if (autoVerifying) {
-    return (
-      <div className="flex w-full flex-col items-center justify-center p-8 lg:w-1/2">
-        <div className="w-full max-w-[420px] text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="relative">
-              <div className="h-24 w-24 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <CheckCircle2 className="h-10 w-10 text-indigo-500/50" />
-              </div>
-            </div>
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground italic">Verifying your account</h2>
-          <p className="text-muted-foreground">
-            Please wait while we complete your activation. You will be redirected shortly.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex w-full items-center justify-center p-8 sm:p-12 lg:w-1/2 lg:p-16">
       <div className="w-full max-w-[420px] space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
@@ -197,78 +177,126 @@ function VerifyEmailForm() {
         </Link>
 
         <div className="space-y-2 text-center lg:text-left">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Verify your email</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            {token ? 'Set your password' : 'Verify your email'}
+          </h2>
           <p className="text-sm text-muted-foreground">
-            We've sent a 6-digit code to <span className="font-semibold text-foreground">{email}</span>.
+            {token 
+              ? `Verification for ${email}. Please set a secure password to activate your account.`
+              : `We've sent a 6-digit code to ${email}.`
+            }
           </p>
         </div>
 
-        {errors.form && (
-          <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-600 dark:text-red-400">
-            {errors.form}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="space-y-4">
-            <Label className="text-sm font-medium text-foreground">Verification Code</Label>
-            <div className="flex justify-between gap-2" onPaste={handlePaste}>
-              {otp.map((digit, idx) => (
-                <Input
-                  key={idx}
-                  ref={(el) => { inputRefs.current[idx] = el; }}
-                  type="text"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(idx, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(idx, e)}
-                  className="h-12 w-12 text-center text-lg font-bold p-0 transition-all duration-200 
-                    focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  disabled={loading}
-                  autoFocus={idx === 0}
-                />
-              ))}
+        {errors.form ? (
+          <div className="space-y-6">
+            <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-600 dark:text-red-400">
+              {errors.form}
             </div>
-            {errors.otp && (
-              <p className="text-sm font-medium text-red-500 animate-in slide-in-from-top-1">
-                {errors.otp}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-4">
             <Button
-              type="submit"
-              className="w-full h-11 text-base font-medium shadow-lg shadow-indigo-500/20 transition-all hover:shadow-indigo-500/30 hover:-translate-y-0.5 cursor-pointer"
-              disabled={loading}
+              className="w-full cursor-pointer"
+              variant="outline"
+              onClick={() => router.push('/register')}
             >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Verifying...
-                </span>
-              ) : (
-                'Verify Email'
-              )}
+              Back to registration
             </Button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={cooldown > 0 || resending}
-                className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-500 disabled:text-muted-foreground disabled:cursor-not-allowed cursor-pointer"
-              >
-                {resending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className={`h-4 w-4 transition-transform ${cooldown === 0 ? 'group-hover:rotate-180 duration-500' : ''}`} />
-                )}
-                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend verification code'}
-              </button>
-            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {token ? (
+              <div className="space-y-4">
+                <div className="space-y-2 relative group">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={loading}
+                      className={`h-11 px-4 pr-10 transition-all duration-200 bg-transparent
+                        focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 
+                        ${errors.password ? 'border-red-500 focus:border-red-500' : 'border-input hover:border-indigo-500/50'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-sm font-medium text-red-500">
+                      {errors.password}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Label className="text-sm font-medium text-foreground">Verification Code</Label>
+                <div className="flex justify-between gap-2" onPaste={handlePaste}>
+                  {otp.map((digit, idx) => (
+                    <Input
+                      key={idx}
+                      ref={(el) => { inputRefs.current[idx] = el; }}
+                      type="text"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(idx, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(idx, e)}
+                      className="h-12 w-12 text-center text-lg font-bold p-0 transition-all duration-200 
+                        focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      disabled={loading}
+                      autoFocus={idx === 0}
+                    />
+                  ))}
+                </div>
+                {errors.otp && (
+                  <p className="text-sm font-medium text-red-500 animate-in slide-in-from-top-1">
+                    {errors.otp}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <Button
+                type="submit"
+                className="w-full h-11 text-base font-medium shadow-lg shadow-indigo-500/20 transition-all hover:shadow-indigo-500/30 hover:-translate-y-0.5 cursor-pointer"
+                disabled={loading}
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  'Verify Email'
+                )}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={cooldown > 0 || resending}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-500 disabled:text-muted-foreground disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {resending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className={`h-4 w-4 transition-transform ${cooldown === 0 ? 'group-hover:rotate-180 duration-500' : ''}`} />
+                  )}
+                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend verification code'}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
 
         <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground pt-4 border-t border-border/50">
           <div className="flex items-center gap-1">

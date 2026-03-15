@@ -52,10 +52,10 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
   if (!rows[0]) {
     return sendError(res, 'Workspace not found or access denied', 404);
   }
-  
+
   const workspace = rows[0];
   let permissions = [];
-  
+
   if (workspace.user_role_id) {
     const permRows = await query(`
       SELECT p.action
@@ -63,11 +63,11 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
       JOIN permissions p ON p.id = rp.permission_id
       WHERE rp.role_id = ?
     `, [workspace.user_role_id]);
-    
+
     permissions = permRows.map(p => p.action);
   }
 
-  return sendSuccess(res, { 
+  return sendSuccess(res, {
     workspace,
     user_permissions: permissions
   });
@@ -251,11 +251,13 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 
   if (!email) {
     errors.email = 'Email is required';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  }
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
   }
 
   const canInvite = await checkPermission(req.params.workspaceId, req.currentUser.id, 'members:invite');
+
   if (!canInvite) {
     errors.workspace_id = 'You do not have permission to add members to this workspace';
   }
@@ -267,15 +269,19 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     if (!String(req.body.last_name || '').trim()) {
       errors.last_name = 'Last name is required';
     }
-    if (!String(req.body.password || '')) {
-      errors.password = 'Password is required';
-    } else if (String(req.body.password).length < 8) {
-      errors.password = 'Password must be at least 8 characters long';
-    }
   }
 
   if (Object.keys(errors).length > 0) {
     return sendValidationError(res, errors);
+  }
+
+  // Check if already a member before proceeding with user creation/fetch
+  const [existingMemberships] = await query(`
+    SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = (SELECT id FROM users WHERE email = ?)
+  `, [req.params.workspaceId, email]);
+
+  if (existingMemberships && existingMemberships.length > 0) {
+    return sendValidationError(res, { email: 'User is already a member of this workspace' });
   }
 
   const [workspaceRows] = await query('SELECT name FROM workspaces WHERE id = ?', [req.params.workspaceId]);
@@ -289,11 +295,14 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       if (existingUsers[0]) {
         const error = new Error('validation');
         error.statusCode = 422;
-        error.payload = { email: 'User with this email already exists in the system. Use the Invite method instead.' };
+        error.payload = { email: 'User with this email already exists in the system.' };
         throw error;
       }
 
-      const password_hash = await bcrypt.hash(String(req.body.password), 10);
+      // Generate a truly random temporary password
+      const tempPassword = crypto.randomBytes(12).toString('hex') + '!';
+      const password_hash = await bcrypt.hash(tempPassword, 10);
+
       const [userResult] = await connection.execute(`
         INSERT INTO users (email, password_hash, first_name, last_name, is_active)
         VALUES (?, ?, ?, ?, FALSE)
@@ -304,6 +313,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 48); // 48 hours expiry for invitations
+
       await connection.execute(`
         INSERT INTO email_verification_tokens (email, token, expires_at)
         VALUES (?, ?, ?)
@@ -322,8 +332,6 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           <div style="text-align: center; margin: 30px 0;">
             <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify & Join Workspace</a>
           </div>
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="word-break: break-all; color: #64748b; font-size: 14px;">${verifyLink}</p>
           <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This link will expire in 48 hours.</p>
         </div>
       `;
@@ -333,7 +341,8 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
         html: htmlContent
       });
 
-    } else {
+    }
+    else {
       const [users] = await connection.execute('SELECT id, first_name FROM users WHERE email = ?', [email]);
       if (!users[0]) {
         const error = new Error('No user found with that email address. They must register first.');
@@ -355,6 +364,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           </div>
         </div>
       `;
+
       await sendMail({
         to: email,
         subject: `Zentrix - New Workspace: ${workspaceName}`,
@@ -362,11 +372,12 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       });
     }
 
-    const [existingMemberships] = await connection.execute(`
+    // Double check membership within transaction to avoid race conditions
+    const [finalMembershipCheck] = await connection.execute(`
       SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?
     `, [req.params.workspaceId, user_id_to_add]);
 
-    if (existingMemberships[0]) {
+    if (finalMembershipCheck[0]) {
       const error = new Error('User is already a member of this workspace');
       error.statusCode = 409;
       throw error;
@@ -473,12 +484,12 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
       if (first_name) { updates.push('first_name = ?'); params.push(String(first_name).trim()); }
       if (last_name) { updates.push('last_name = ?'); params.push(String(last_name).trim()); }
       if (email) { updates.push('email = ?'); params.push(String(email).trim()); }
-      
+
       params.push(targetMember.user_id);
       await connection.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
     }
   });
-  
+
   return sendSuccess(res, { message: 'Member details updated successfully' });
 }));
 

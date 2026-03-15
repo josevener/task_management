@@ -138,10 +138,11 @@ axios.interceptors.response.use(
       // If we're on the client side, redirect to login
       if (typeof window !== 'undefined') {
         const pathname = window.location.pathname;
-        const isLoginPage = pathname === '/login';
+        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
+        const isPublicPath = publicPaths.includes(pathname);
 
-        // Only redirect if not already on the login page to prevent loops
-        if (!isLoginPage) {
+        // Only redirect if not already on a public page to prevent loops
+        if (!isPublicPath) {
           window.location.href = '/login?expired=true';
         }
       }
