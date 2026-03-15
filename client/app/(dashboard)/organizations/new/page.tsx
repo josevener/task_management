@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useWorkspace } from "@/contexts/workspace-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createOrganization } from "@/lib/api/organizations";
 import { useToast } from "@/lib/toast";
@@ -13,21 +14,30 @@ import { OrganizationForm } from "@/components/forms/OrganizationForm";
 export default function NewOrganizationPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  
+  const { refreshWorkspaces } = useWorkspace();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (data: { name: string; slug: string; subscription_tier: string }) => {
     try {
       setIsSubmitting(true);
-      await createOrganization(data);
-      
+      const response = await createOrganization(data);
+
       showToast("Organization created successfully", "success");
-      router.push("/organizations");
-      router.refresh(); // Reflect new orgs
-    } 
+
+      // Auto-select the new workspace and sync state
+      if (response.workspace) {
+        await refreshWorkspaces(response.workspace.id);
+        router.push("/dashboard");
+      }
+      else {
+        await refreshWorkspaces();
+        router.push("/organizations");
+      }
+    }
     catch (error: any) {
       showToast(error.message || "Failed to create organization", "error");
-    } 
+    }
     finally {
       setIsSubmitting(false);
     }

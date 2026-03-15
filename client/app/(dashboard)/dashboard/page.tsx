@@ -19,7 +19,11 @@ import {
   UserPlus,
   LayoutGrid,
   TrendingUp,
-  Briefcase
+  Briefcase,
+  Rocket,
+  ArrowRightCircle,
+  Sparkles,
+  Building2
 } from "lucide-react";
 import Link from "next/link";
 import { getAllProjects } from "@/lib/api/projects";
@@ -32,7 +36,7 @@ import { useToast } from "@/lib/toast";
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { activeWorkspace, hasPermission } = useWorkspace();
+  const { activeWorkspace, hasPermission, loading: workspaceLoading } = useWorkspace();
   const { showToast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -149,6 +153,85 @@ export default function DashboardPage() {
       default: return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
+  if (workspaceLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <Skeleton className="h-12 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (!activeWorkspace) {
+    return (
+      <div className="max-w-4xl mx-auto py-12 px-4 animate-in fade-in slide-in-from-bottom-8 duration-700">
+        <div className="text-center space-y-6 mb-12">
+          <div className="inline-flex items-center justify-center p-3 bg-blue-50 rounded-2xl mb-4">
+            <Rocket className="h-10 w-10 text-blue-600 animate-pulse" />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
+            Welcome to <span className="text-blue-600">Zentrix</span>, {user?.first_name || "there"}!
+          </h1>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+            Your powerful new suite for task and team management is ready.
+            To get started, we just need to set up your first organization.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card className="border-2 border-slate-100 hover:border-blue-200 transition-all group overflow-hidden shadow-sm hover:shadow-xl hover:translate-y-[-4px]">
+            <div className="p-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <CardHeader className="pb-4">
+              <div className="p-3 bg-blue-50 w-fit rounded-xl mb-4 group-hover:bg-blue-100 transition-colors">
+                <Building2 className="h-6 w-6 text-blue-600" />
+              </div>
+              <CardTitle className="text-xl">Create New Organization</CardTitle>
+              <CardDescription>
+                Start fresh with a new company account, branding, and custom workflows.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3 mb-6">
+                {['Single sign-on ready', 'Custom branding', 'Unlimited workspaces'].map((feature, i) => (
+                  <li key={i} className="flex items-center text-sm text-slate-600 gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" /> {feature}
+                  </li>
+                ))}
+              </ul>
+              <Button asChild className="w-full bg-slate-900 border-none hover:bg-slate-800 text-slate-50">
+                <Link href="/organizations/new">
+                  Let's Begin <ArrowRightCircle className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-slate-100 bg-slate-50/50 flex flex-col justify-center items-center p-8 text-center space-y-6">
+            <div className="p-4 bg-white rounded-full shadow-sm">
+              <Sparkles className="h-8 w-8 text-indigo-500" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-bold text-slate-900">Need a guided tour?</h3>
+              <p className="text-sm text-slate-500">
+                Contact our support team if you're representing an enterprise and need assisted setup.
+              </p>
+            </div>
+            <Button variant="outline" className="text-slate-600 border-slate-200">
+              View Documentation
+            </Button>
+          </Card>
+        </div>
+
+        <div className="mt-16 text-center border-t border-slate-100 pt-8">
+          <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">
+            Trusted by modern teams everywhere
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -173,9 +256,9 @@ export default function DashboardPage() {
             </Button>
           )}
           {hasPermission('members:invite') && (
-            <Button 
+            <Button
               onClick={() => setIsInviteModalOpen(true)}
-              variant="outline" 
+              variant="outline"
               className="bg-white border-slate-200 hover:bg-slate-50 shadow-sm transition-all hover:translate-y-[-1px] cursor-pointer"
             >
               <UserPlus className="mr-2 h-4 w-4 text-indigo-600" />

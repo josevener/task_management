@@ -3,21 +3,30 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getOrganization, updateOrganization } from "@/lib/api/organizations";
+import { useWorkspace } from "@/contexts/workspace-context";
+import {
+  getOrganization,
+  deleteOrganization
+} from "@/lib/api/organizations";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/lib/toast";
-import { Loader2, ArrowLeft, Building2 } from "lucide-react";
-import { OrganizationForm } from "@/components/forms/OrganizationForm";
+import { Loader2, ArrowLeft } from "lucide-react";
+import { OrganizationSettings } from "@/components/organizations/OrganizationSettings";
+import {
+  Dialog, DialogContent, DialogDescription,
+  DialogFooter, DialogHeader, DialogTitle
+} from "@/components/ui/dialog";
 
 export default function EditOrganizationPage() {
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
+  const { refreshWorkspaces } = useWorkspace();
   const organizationId = Number(params.id);
 
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [orgData, setOrgData] = useState<any>(null);
 
   useEffect(() => {
@@ -30,7 +39,7 @@ export default function EditOrganizationPage() {
         }
       }
       catch (error) {
-        showToast("Error loading organization", "error");
+        showToast("Failed to load organization", "error");
         router.push("/organizations");
       }
       finally {
@@ -40,18 +49,20 @@ export default function EditOrganizationPage() {
     fetchOrg();
   }, [organizationId, router, showToast]);
 
-  const handleSubmit = async (data: { name: string; slug: string; subscription_tier: string }) => {
+  const handleDelete = async () => {
     try {
-      setIsSubmitting(true);
-      await updateOrganization(organizationId, data);
-      showToast("Organization updated successfully", "success");
+      setIsDeleting(true);
+      await deleteOrganization(organizationId);
+      showToast("Organization deleted successfully", "success");
+      await refreshWorkspaces();
       router.push("/organizations");
     }
     catch (error: any) {
-      showToast(error.message || "Failed to update organization", "error");
+      showToast(error.message || "Failed to delete organization", "error");
+      setShowDeleteDialog(false);
     }
     finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
 
@@ -72,37 +83,52 @@ export default function EditOrganizationPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Edit Organization</h1>
-          <p className="text-muted-foreground">Manage your organization settings and details.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            {orgData?.name} Settings
+          </h1>
+          <p className="text-muted-foreground">Manage your organization details and preferences.</p>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-slate-500" />
-            Organization Settings
-          </CardTitle>
-          <CardDescription>
-            Update the profile and subscription details.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {orgData && (
-            <OrganizationForm
-              initialData={{
-                name: orgData.name,
-                slug: orgData.slug,
-                subscription_tier: orgData.subscription_tier || 'Free'
-              }}
-              onSubmit={handleSubmit}
-              onCancel={() => router.push("/organizations")}
-              isSubmitting={isSubmitting}
-              submitLabel="Save Changes"
-            />
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6">
+        {orgData && (
+          <OrganizationSettings
+            organization={orgData}
+            onUpdate={(updated) => setOrgData(updated)}
+            onDeleteRequest={() => setShowDeleteDialog(true)}
+          />
+        )}
+      </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Delete Organization</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{orgData?.name}</strong>? This action cannot be undone and will permanently delete all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setShowDeleteDialog(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="cursor-pointer"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

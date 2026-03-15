@@ -12,6 +12,11 @@ const pool = mysql.createPool({
   namedPlaceholders: false,
 });
 
+// Polyfill BigInt for JSON.stringify to prevent serialization errors
+BigInt.prototype.toJSON = function() {
+  return this.toString();
+};
+
 async function query(sql, params = []) {
   const [rows] = await pool.execute(sql, params);
   return rows;

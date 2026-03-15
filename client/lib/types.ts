@@ -21,7 +21,10 @@ export interface Organization {
   slug: string;
   logo_url?: string;
   subscription_tier: string;
+  subscription_status?: string;
+  owner_id?: number;
   created_at: string;
+  updated_at?: string;
 }
 
 // Workspace types
@@ -32,7 +35,7 @@ export interface Workspace {
   slug: string;
   description?: string;
   logo_url?: string;
-  color_theme: string;
+  color_theme?: string; // Changed to optional
   created_at: string;
   updated_at?: string;
   organization_name?: string;
@@ -175,4 +178,17 @@ export interface RoleResponse {
 
 export interface PermissionsResponse {
   permissions: Permission[];
+}
+
+export interface OrganizationMember {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  avatar_url?: string;
+}
+
+export interface OrganizationMembersResponse {
+  members: OrganizationMember[];
 }

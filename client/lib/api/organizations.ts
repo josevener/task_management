@@ -1,8 +1,9 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
-import type { Organization, OrganizationsResponse } from '../types';
+import type { Organization, OrganizationsResponse, OrganizationMembersResponse, Workspace } from '../types';
 
 export interface OrganizationResponse {
   organization: Organization;
+  workspace?: Workspace;
 }
 
 export async function getOrganizations(): Promise<OrganizationsResponse> {
@@ -27,10 +28,20 @@ export interface UpdateOrganizationData {
   name?: string;
   slug?: string;
   subscription_tier?: string;
+  subscription_status?: string;
+  logo_url?: string;
 }
 
 export async function updateOrganization(organizationId: number, data: UpdateOrganizationData): Promise<OrganizationResponse> {
   return apiPatch<OrganizationResponse>(`/organizations/${organizationId}`, data);
+}
+
+export async function getOrganizationMembers(organizationId: number): Promise<OrganizationMembersResponse> {
+  return apiGet<OrganizationMembersResponse>(`/organizations/${organizationId}/members`);
+}
+
+export async function transferOrganizationOwnership(organizationId: number, newOwnerId: number): Promise<{ message: string }> {
+  return apiPost<{ message: string }>(`/organizations/${organizationId}/transfer-ownership`, { new_owner_id: newOwnerId });
 }
 
 export async function deleteOrganization(organizationId: number): Promise<{ message: string }> {

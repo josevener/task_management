@@ -19,10 +19,12 @@ workspacesRouter.get('/', asyncHandler(async (req, res) => {
   let sql = `
     SELECT w.id, w.organization_id, w.name, w.slug, w.description,
            w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           o.name AS organization_name
+           o.name AS organization_name,
+           r.name AS user_role, r.id AS user_role_id
     FROM workspaces w
     INNER JOIN organizations o ON o.id = w.organization_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    LEFT JOIN roles r ON r.id = wm.role_id
     WHERE wm.user_id = ? AND w.is_active = TRUE
   `;
 
@@ -40,7 +42,8 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT w.id, w.organization_id, w.name, w.slug, w.description,
            w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           o.name AS organization_name, r.name AS user_role, r.id AS user_role_id, r.is_system_role
+           o.name AS organization_name, o.default_language, o.timezone, o.date_format, o.time_format,
+           r.name AS user_role, r.id AS user_role_id, r.is_system_role
     FROM workspaces w
     INNER JOIN organizations o ON o.id = w.organization_id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -124,19 +127,51 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
       VALUES (?, ?, ?, ?, ?)
     `, [organization_id, name, slug, description || null, color_theme]);
 
+    const workspaceId = insertResult.insertId;
+
+    // 1. Provision Default Roles
+    const defaultRoles = [
+      ['Admin', 'Full administrative access', true],
+      ['Manager', 'Can manage projects, tasks, and members.', true],
+      ['Member', 'Can create and manage tasks.', true],
+      ['Guest', 'View-only access.', true]
+    ];
+
+    const roleIds = {};
+    for (const [rName, rDesc, isSystem] of defaultRoles) {
+      const [rResult] = await connection.execute(
+        'INSERT INTO roles (workspace_id, name, description, is_system_role) VALUES (?, ?, ?, ?)',
+        [workspaceId, rName, rDesc, isSystem]
+      );
+      roleIds[rName] = rResult.insertId;
+    }
+
+    // 2. Grant Permissions to Admin Role
+    const [permissions] = await connection.execute('SELECT id FROM permissions');
+    if (permissions.length > 0) {
+      const values = permissions.map(p => `(${roleIds['Admin']}, ${p.id})`).join(', ');
+      await connection.execute(`
+        INSERT INTO role_permissions (role_id, permission_id)
+        VALUES ${values}
+      `);
+    }
+
+    // 3. Add user as Admin member
     await connection.execute(`
-      INSERT INTO workspace_members (workspace_id, user_id, role)
-      VALUES (?, ?, 'admin')
-    `, [insertResult.insertId, req.currentUser.id]);
+      INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
+      VALUES (?, ?, ?, 'Admin')
+    `, [workspaceId, req.currentUser.id, roleIds['Admin']]);
 
     const [rows] = await connection.execute(`
       SELECT w.id, w.organization_id, w.name, w.slug, w.description,
              w.logo_url, w.color_theme, w.created_at, w.updated_at,
-             o.name AS organization_name
+             o.name AS organization_name,
+             r.name AS user_role, r.id AS user_role_id
       FROM workspaces w
       INNER JOIN organizations o ON o.id = w.organization_id
+      INNER JOIN roles r ON r.id = ?
       WHERE w.id = ?
-    `, [insertResult.insertId]);
+    `, [roleIds['Admin'], workspaceId]);
 
     return rows[0];
   });

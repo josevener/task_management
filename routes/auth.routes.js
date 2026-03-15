@@ -254,7 +254,7 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
 
       await connection.execute(`
         INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
-        VALUES (?, ?, ?, 'admin')
+        VALUES (?, ?, ?, 'Admin')
       `, [wsId, activeUser.id, roleId]);
     }
 
@@ -380,7 +380,7 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
       // Add user as the workspace member (admin)
       await connection.execute(`
         INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
-        VALUES (?, ?, ?, 'admin')
+        VALUES (?, ?, ?, 'Admin')
       `, [wsId, activeUser.id, roleId]);
     }
 

@@ -158,8 +158,18 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
     await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [roleId]);
     
     if (permission_ids.length > 0) {
-      const values = permission_ids.map(id => `(${roleId}, ${connection.escape(id)})`).join(', ');
-      await connection.execute(`INSERT INTO role_permissions (role_id, permission_id) VALUES ${values}`);
+      // Use parameterized query for safety if possible, or build carefully
+      const values = [];
+      const params = [];
+      for (const pId of permission_ids) {
+        values.push('(?, ?)');
+        params.push(roleId, pId);
+      }
+      
+      await connection.execute(
+        `INSERT INTO role_permissions (role_id, permission_id) VALUES ${values.join(', ')}`,
+        params
+      );
     }
   });
 

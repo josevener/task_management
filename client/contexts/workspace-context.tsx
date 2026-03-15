@@ -5,6 +5,12 @@ import { useAuth } from './auth-context';
 import { getWorkspaces, getWorkspace } from '@/lib/api/workspaces';
 import type { Workspace } from '@/lib/types';
 
+const GLOBAL_PERMISSIONS = [
+  'organizations:view',
+  'organizations:create',
+  'settings:view'
+];
+
 interface WorkspaceContextType {
   workspaces: Workspace[];
   activeWorkspace: Workspace | null;
@@ -12,7 +18,7 @@ interface WorkspaceContextType {
   userPermissions: string[];
   hasPermission: (action: string) => boolean;
   switchWorkspace: (workspace: Workspace) => void;
-  refreshWorkspaces: () => Promise<void>;
+  refreshWorkspaces: (targetWorkspaceId?: number) => Promise<Workspace | null>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -25,48 +31,79 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const hasPermission = useCallback((action: string) => {
-    // Admin role bypass or explicit permission check
+    // 1. Check Global Permissions (bypass workspace check)
+    if (GLOBAL_PERMISSIONS.includes(action)) return true;
+
+    // 2. Admin role bypass or explicit permission check (requires active workspace)
     if (activeWorkspace?.user_role === 'Admin') return true;
     return userPermissions.includes(action);
   }, [userPermissions, activeWorkspace]);
 
-  const fetchWorkspaces = useCallback(async () => {
+  const fetchWorkspaces = useCallback(async (targetWorkspaceId?: number) => {
     if (!authenticated) {
       setWorkspaces([]);
       setActiveWorkspace(null);
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
       setLoading(true);
       const response = await getWorkspaces();
-      setWorkspaces(response.workspaces || []);
+      const fetchedWorkspaces = response.workspaces || [];
+      setWorkspaces(fetchedWorkspaces);
 
-      if (response.workspaces?.length > 0) {
-        // Find if we had one saved in localStorage
-        const savedId = localStorage.getItem('activeWorkspaceId');
-        if (savedId) {
-          const found = response.workspaces.find(w => w.id.toString() === savedId);
-          if (found) {
-            setActiveWorkspace(found);
-            return;
+      if (fetchedWorkspaces.length > 0) {
+        // 1. If we have a target ID passed in (e.g. from just creating an org)
+        if (targetWorkspaceId) {
+          const target = fetchedWorkspaces.find(w => w.id === targetWorkspaceId);
+          if (target) {
+            setActiveWorkspace(target);
+            localStorage.setItem('activeWorkspaceId', target.id.toString());
+            return target;
           }
         }
-        // Default to first
-        setActiveWorkspace(response.workspaces[0]);
+
+        // 2. Check if the current active workspace still exists in the list
+        const currentActiveId = activeWorkspace?.id;
+        const exists = fetchedWorkspaces.find(w => w.id === currentActiveId);
+        if (exists) {
+          // It still exists, but we might want to update its basic info from the list
+          setActiveWorkspace(exists);
+          return exists;
+        }
+
+        // 3. Find if we had one saved in localStorage that is valid
+        const savedId = localStorage.getItem('activeWorkspaceId');
+        if (savedId) {
+          const found = fetchedWorkspaces.find(w => w.id.toString() === savedId);
+          if (found) {
+            setActiveWorkspace(found);
+            return found;
+          }
+        }
+
+        // 4. Default to first if none of the above
+        const first = fetchedWorkspaces[0];
+        setActiveWorkspace(first);
+        localStorage.setItem('activeWorkspaceId', first.id.toString());
+        return first;
       }
       else {
         setActiveWorkspace(null);
+        localStorage.removeItem('activeWorkspaceId');
+        return null;
       }
     }
     catch (error) {
-      console.error("Failed to fetch workspaces:", error);
+      console.log("Failed to fetch workspaces:", error);
+      return null;
     }
     finally {
       setLoading(false);
     }
   }, [authenticated]);
+
 
   useEffect(() => {
     fetchWorkspaces();
@@ -75,39 +112,41 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Load detailed workspace info (for permissions and role) whenever the active workspace changes
   useEffect(() => {
     let mounted = true;
-    
+
     const loadWorkspaceDetails = async () => {
       if (!activeWorkspace?.id || !authenticated) {
         setUserPermissions([]);
         return;
       }
-      
+
       try {
         const response = await getWorkspace(activeWorkspace.id);
         if (mounted) {
           setUserPermissions(response.user_permissions || []);
-          
+
+
           // Optionally update the active workspace with the latest role and permissions if we don't cause infinite render
           setActiveWorkspace(prev => {
             if (!prev) return prev;
             if (prev.user_role !== response.workspace.user_role || prev.id !== response.workspace.id) {
-               return { 
-                 ...prev, 
-                 user_role: response.workspace.user_role,
-                 user_permissions: response.user_permissions 
-               };
+              return {
+                ...prev,
+                user_role: response.workspace.user_role,
+                user_permissions: response.user_permissions
+              };
             }
             return prev;
           });
         }
-      } catch (err) {
-        console.error("Failed to load active workspace permissions", err);
+      }
+      catch (err) {
+        console.log("Failed to load active workspace permissions", err);
         if (mounted) setUserPermissions([]);
       }
     };
-    
+
     loadWorkspaceDetails();
-    
+
     return () => {
       mounted = false;
     };

@@ -13,7 +13,10 @@ organizationsRouter.use(attachCurrentUser, requireAuth);
 
 organizationsRouter.get('/', asyncHandler(async (req, res) => {
   const organizations = await query(`
-    SELECT DISTINCT o.id, o.name, o.slug, o.logo_url, o.subscription_tier, o.created_at, o.updated_at
+    SELECT DISTINCT 
+      o.id, o.name, o.slug, o.logo_url, o.subscription_tier, 
+      o.timezone, o.default_language, o.date_format, o.time_format,
+      o.subscription_status, o.owner_id, o.created_at, o.updated_at
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -26,7 +29,10 @@ organizationsRouter.get('/', asyncHandler(async (req, res) => {
 
 organizationsRouter.get('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
-    SELECT DISTINCT o.id, o.name, o.slug, o.logo_url, o.subscription_tier, o.created_at, o.updated_at
+    SELECT DISTINCT 
+      o.id, o.name, o.slug, o.logo_url, o.subscription_tier, 
+      o.timezone, o.default_language, o.date_format, o.time_format,
+      o.subscription_status, o.owner_id, o.created_at, o.updated_at
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -67,9 +73,9 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
 
   const organization = await withTransaction(async (connection) => {
     const [organizationResult] = await connection.execute(`
-      INSERT INTO organizations (name, slug, subscription_tier)
-      VALUES (?, ?, ?)
-    `, [name, slug, req.body.subscription_tier || 'free']);
+      INSERT INTO organizations (name, slug, subscription_tier, owner_id)
+      VALUES (?, ?, ?, ?)
+    `, [name, slug, req.body.subscription_tier || 'free', req.currentUser.id]);
 
     const workspace_name = `${name} Workspace`;
     const workspace_slug = `${slug}-workspace`;
@@ -79,36 +85,81 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
       VALUES (?, ?, ?)
     `, [organizationResult.insertId, workspace_name, workspace_slug]);
 
+    const workspaceId = workspaceResult.insertId;
+
+    // 1. Provision Default Roles
+    const defaultRoles = [
+      ['Admin', 'Full administrative access', true],
+      ['Manager', 'Can manage projects, tasks, and members.', true],
+      ['Member', 'Can create and manage tasks.', true],
+      ['Guest', 'View-only access.', true]
+    ];
+
+    const roleIds = {};
+    for (const [rName, rDesc, isSystem] of defaultRoles) {
+      const [rResult] = await connection.execute(
+        'INSERT INTO roles (workspace_id, name, description, is_system_role) VALUES (?, ?, ?, ?)',
+        [workspaceId, rName, rDesc, isSystem]
+      );
+      roleIds[rName] = rResult.insertId;
+    }
+
+    // 2. Grant Permissions to Admin Role
+    const [permissions] = await connection.execute('SELECT id FROM permissions');
+    if (permissions.length > 0) {
+      const values = permissions.map(p => `(${roleIds['Admin']}, ${p.id})`).join(', ');
+      await connection.execute(`
+        INSERT INTO role_permissions (role_id, permission_id)
+        VALUES ${values}
+      `);
+    }
+
+    // 3. Add user as Admin member
     await connection.execute(`
-      INSERT INTO workspace_members (workspace_id, user_id, role)
-      VALUES (?, ?, 'admin')
-    `, [workspaceResult.insertId, req.currentUser.id]);
+      INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
+      VALUES (?, ?, ?, 'Admin')
+    `, [workspaceId, req.currentUser.id, roleIds['Admin']]);
 
     const [rows] = await connection.execute(`
-      SELECT id, name, slug, logo_url, subscription_tier, created_at, updated_at
+      SELECT id, name, slug, logo_url, subscription_tier, owner_id, created_at, updated_at
       FROM organizations
       WHERE id = ?
     `, [organizationResult.insertId]);
 
-    return rows[0];
+    const [wsRows] = await connection.execute(`
+      SELECT w.id, w.name, w.slug, w.organization_id, w.color_theme,
+             r.name AS user_role, r.id AS user_role_id
+      FROM workspaces w
+      INNER JOIN roles r ON r.id = ?
+      WHERE w.id = ?
+    `, [roleIds['Admin'], workspaceId]);
+
+    return {
+      organization: rows[0],
+      workspace: wsRows[0]
+    };
   });
 
-  return sendSuccess(res, { organization }, 201);
+  return sendSuccess(res, organization, 201);
 }));
 
 organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
   const adminRows = await query(`
-    SELECT o.id
+    SELECT o.id, o.owner_id
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE o.id = ? AND wm.user_id = ? AND wm.role = 'admin'
+    WHERE o.id = ? AND wm.user_id = ? AND (wm.role = 'admin' OR o.owner_id = ?)
     LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  `, [req.params.id, req.currentUser.id, req.currentUser.id]);
 
   if (!adminRows[0]) {
     return sendError(res, 'Organization not found or you do not have permission to edit it', 404);
   }
+
+  // Strictly check owner for critical changes if needed, but for now allow admins to edit basic info
+  // However, the user said "Only the organization owner can create, transfer ownership, and delete"
+  // so for PATCH, we'll keep it as admin/owner for now unless specified otherwise.
 
   const input = { ...req.body };
   if (Object.prototype.hasOwnProperty.call(input, 'name') && !String(input.name || '').trim()) {
@@ -127,7 +178,10 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
     }
   }
 
-  const { updates, params } = buildUpdateClause(input, ['name', 'slug', 'subscription_tier', 'logo_url']);
+  const { updates, params } = buildUpdateClause(input, [
+    'name', 'slug', 'subscription_tier', 'logo_url', 
+    'timezone', 'default_language', 'date_format', 'time_format', 'subscription_status'
+  ]);
   if (updates.length === 0) {
     return sendError(res, 'No fields to update', 400);
   }
@@ -142,9 +196,10 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
   return sendSuccess(res, { organization: rows[0] });
 }));
 
-organizationsRouter.delete('/:id', asyncHandler(async (req, res) => {
+organizationsRouter.get('/:id/members', asyncHandler(async (req, res) => {
+  // Check access: user must be an admin in at least one workspace of this organization
   const adminRows = await query(`
-    SELECT o.id
+    SELECT DISTINCT o.id
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -153,7 +208,73 @@ organizationsRouter.delete('/:id', asyncHandler(async (req, res) => {
   `, [req.params.id, req.currentUser.id]);
 
   if (!adminRows[0]) {
-    return sendError(res, 'Organization not found or you do not have permission to delete it', 404);
+    return sendError(res, 'Organization not found or access denied', 404);
+  }
+
+  const members = await query(`
+    SELECT DISTINCT u.id, u.email, u.first_name, u.last_name, u.avatar_url, MAX(wm.role) as role
+    FROM users u
+    INNER JOIN workspace_members wm ON wm.user_id = u.id
+    INNER JOIN workspaces w ON w.id = wm.workspace_id
+    WHERE w.organization_id = ?
+    GROUP BY u.id
+  `, [req.params.id]);
+
+  return sendSuccess(res, { members });
+}));
+
+organizationsRouter.post('/:id/transfer-ownership', asyncHandler(async (req, res) => {
+  const { new_owner_id } = req.body;
+  
+  if (!new_owner_id) {
+    return sendValidationError(res, { new_owner_id: 'New owner ID is required' });
+  }
+
+  // ONLY the organization owner can transfer ownership
+  const adminRows = await query(`
+    SELECT o.id, o.owner_id
+    FROM organizations o
+    WHERE o.id = ? AND o.owner_id = ?
+    LIMIT 1
+  `, [req.params.id, req.currentUser.id]);
+
+  if (!adminRows[0]) {
+    return sendError(res, 'Only the organization owner can transfer ownership', 403);
+  }
+
+  // Check if new owner exists and is a member of at least one workspace in the organization
+  const memberRows = await query(`
+    SELECT wm.user_id
+    FROM workspace_members wm
+    INNER JOIN workspaces w ON w.id = wm.workspace_id
+    WHERE w.organization_id = ? AND wm.user_id = ?
+    LIMIT 1
+  `, [req.params.id, new_owner_id]);
+
+  if (!memberRows[0]) {
+    return sendError(res, 'New owner must be a member of the organization', 400);
+  }
+
+  await query(`
+    UPDATE organizations
+    SET owner_id = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `, [new_owner_id, req.params.id]);
+
+  return sendSuccess(res, { message: 'Ownership transferred successfully' });
+}));
+
+organizationsRouter.delete('/:id', asyncHandler(async (req, res) => {
+  // ONLY the organization owner can delete the organization
+  const adminRows = await query(`
+    SELECT o.id, o.owner_id
+    FROM organizations o
+    WHERE o.id = ? AND o.owner_id = ?
+    LIMIT 1
+  `, [req.params.id, req.currentUser.id]);
+
+  if (!adminRows[0]) {
+    return sendError(res, 'Only the organization owner can delete this organization', 403);
   }
 
   await query('DELETE FROM organizations WHERE id = ?', [req.params.id]);

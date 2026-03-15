@@ -295,19 +295,48 @@ export function Sidebar({ className, onNavigate, isCollapsed = false }: SidebarP
       {/* Navigation */}
       <div className="px-3 py-6 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
         <div className="flex flex-col gap-5">
-          {navigationSections.map((section) => (
-            <div key={section.title} className="flex flex-col gap-2">
-              <h3 className={cn(
-                "text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold px-3 transition-all duration-300",
-                isCollapsed ? "opacity-0 h-0" : "opacity-100 h-auto mb-1"
-              )}>
-                {section.title}
-              </h3>
-              <nav className="flex flex-col gap-1">
-                {section.items.map((item) => renderNavItem(item))}
-              </nav>
+          {navigationSections.length > 0 ? (
+            navigationSections.map((section) => (
+              <div key={section.title} className="flex flex-col gap-2">
+                <h3 className={cn(
+                  "text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold px-3 transition-all duration-300",
+                  isCollapsed ? "opacity-0 h-0" : "opacity-100 h-auto mb-1"
+                )}>
+                  {section.title}
+                </h3>
+                <nav className="flex flex-col gap-1">
+                  {section.items.map((item) => renderNavItem(item))}
+                </nav>
+              </div>
+            ))
+          ) : (
+            <div className={cn(
+              "px-3 py-4 flex flex-col items-center justify-center text-center gap-4 transition-all duration-300",
+              isCollapsed && "px-1"
+            )}>
+              {!isCollapsed && (
+                <>
+                  <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center">
+                    <Building2 size={20} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-200">No content available</p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Create an organization to unlock features.
+                    </p>
+                  </div>
+                  <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700 w-full text-xs">
+                    <Link href="/organizations/new">Create Now</Link>
+                  </Button>
+                </>
+              )}
+              {isCollapsed && (
+                <Link href="/organizations/new" className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors">
+                  <Plus size={16} className="text-blue-400" />
+                </Link>
+              )}
             </div>
-          ))}
+          )}
         </div>
       </div>
 

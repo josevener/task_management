@@ -49,14 +49,16 @@ export default function NewWorkspacePage() {
         color_theme: data.color_theme,
       });
 
-      await refreshWorkspaces();
-
       if (response.workspace) {
-        switchWorkspace(response.workspace);
+        await refreshWorkspaces(response.workspace.id);
+        showToast("Workspace created successfully!", "success");
+        router.push("/dashboard");
       }
-
-      showToast("Workspace created successfully!", "success");
-      router.push("/workspaces");
+      else {
+        await refreshWorkspaces();
+        showToast("Workspace created successfully!", "success");
+        router.push("/workspaces");
+      }
     }
     catch (error: any) {
       showToast(error.message || "Failed to create workspace", "error");
