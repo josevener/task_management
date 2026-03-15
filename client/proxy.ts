@@ -7,7 +7,14 @@ import type { NextRequest } from 'next/server';
  * Centralized protection for dashboard routes and redirection for guest-only pages.
  * Based on the session cookie 'task_management.sid'.
  */
-export function proxy(request: NextRequest) {
+
+/**
+ * Middleware for Route Guarding
+ * 
+ * Centralized protection for dashboard routes and redirection for guest-only pages.
+ * Forcefully invalidates sessions that are invalid on the backend.
+ */
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Get the session cookie
@@ -39,6 +46,31 @@ export function proxy(request: NextRequest) {
   if (isDashboardPage && !isAuthenticated) {
     // We redirect to login
     return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // 3. Verify session if authenticated and on dashboard
+  if (isDashboardPage && isAuthenticated) {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8500/api';
+      const response = await fetch(`${apiUrl}/auth/me`, {
+        headers: {
+          'Cookie': `task_management.sid=${sessionToken.value}`
+        },
+        cache: 'no-store'
+      });
+
+      if (!response.ok) {
+        // forceful logout
+        const redirectResponse = NextResponse.redirect(new URL('/login', request.url));
+        redirectResponse.cookies.delete('task_management.sid');
+        return redirectResponse;
+      }
+    }
+    catch (error) {
+      console.log(`${new Date().toISOString()} >> Session validation error:`, error);
+      // In case of backend error (e.g. timeout), we don't necessarily want to log out
+      // unless we're sure it's an auth failure. For now, we continue.
+    }
   }
 
   return NextResponse.next();

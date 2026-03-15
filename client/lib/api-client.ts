@@ -126,6 +126,30 @@ export async function apiPatch<T = unknown>(
 /**
  * DELETE request
  */
+/**
+ * AXIOS INTERCEPTORS
+ * 
+ * Global handling for authentication failures.
+ */
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // If we're on the client side, redirect to login
+      if (typeof window !== 'undefined') {
+        const pathname = window.location.pathname;
+        const isLoginPage = pathname === '/login';
+
+        // Only redirect if not already on the login page to prevent loops
+        if (!isLoginPage) {
+          window.location.href = '/login?expired=true';
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export async function apiDelete<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
   return apiRequest<T>(endpoint, { method: 'DELETE', data });
 }
