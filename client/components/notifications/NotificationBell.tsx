@@ -37,7 +37,7 @@ export function NotificationBell() {
       });
     }
     catch (e) {
-      console.error("Could not play sound:", e);
+      console.log("Could not play sound:", e);
     }
   };
 
@@ -79,7 +79,7 @@ export function NotificationBell() {
         toastType = 'success';
       }
 
-      showToast(`New: ${newNotif.title}`, toastType);
+      showToast(`${newNotif.title}`, toastType);
       playNotificationSound();
     });
 
@@ -120,7 +120,7 @@ export function NotificationBell() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative cursor-pointer">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge
