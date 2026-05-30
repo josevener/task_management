@@ -20,6 +20,15 @@ const checkRoleManagePermission = async (workspaceId, userId) => {
   return rows.length > 0;
 };
 
+const getRoleInWorkspace = async (workspaceId, roleId) => {
+  const rows = await query(
+    'SELECT id, name, workspace_id FROM roles WHERE id = ? AND workspace_id = ? LIMIT 1',
+    [roleId, workspaceId]
+  );
+
+  return rows[0] || null;
+};
+
 // GET /workspaces/:workspaceId/roles
 rolesRouter.get('/workspaces/:workspaceId/roles', asyncHandler(async (req, res) => {
   const { workspaceId } = req.params;
@@ -128,12 +137,15 @@ rolesRouter.get('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
   const memberRows = await query('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [workspaceId, req.currentUser.id]);
   if (!memberRows[0]) return sendError(res, 'Access denied', 403);
 
+  const role = await getRoleInWorkspace(workspaceId, roleId);
+  if (!role) return sendError(res, 'Role not found', 404);
+
   const permissions = await query(`
     SELECT p.id, p.module, p.action, p.description
     FROM permissions p
     INNER JOIN role_permissions rp ON rp.permission_id = p.id
     WHERE rp.role_id = ?
-  `, [roleId]);
+  `, [role.id]);
 
   return sendSuccess(res, { permissions });
 }));
@@ -148,14 +160,16 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
 
   if (!Array.isArray(permission_ids)) return sendValidationError(res, { permission_ids: 'Must be an array of permission IDs' });
 
+  const role = await getRoleInWorkspace(workspaceId, roleId);
+  if (!role) return sendError(res, 'Role not found', 404);
+
   // Do not let them remove all permissions from admin role to prevent lockout
-  const roleRows = await query('SELECT name FROM roles WHERE id = ?', [roleId]);
-  if (roleRows[0] && roleRows[0].name === 'Admin' && permission_ids.length === 0) {
+  if (role.name === 'Admin' && permission_ids.length === 0) {
     return sendError(res, 'Cannot remove all permissions from the Admin role', 400);
   }
 
   await withTransaction(async (connection) => {
-    await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [roleId]);
+    await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [role.id]);
     
     if (permission_ids.length > 0) {
       // Use parameterized query for safety if possible, or build carefully
@@ -163,7 +177,7 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
       const params = [];
       for (const pId of permission_ids) {
         values.push('(?, ?)');
-        params.push(roleId, pId);
+        params.push(role.id, pId);
       }
       
       await connection.execute(

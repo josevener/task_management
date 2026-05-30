@@ -17,6 +17,8 @@ BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 
+const existingColumnCache = new Map();
+
 async function query(sql, params = []) {
   const [rows] = await pool.execute(sql, params);
   return rows;
@@ -40,4 +42,31 @@ async function withTransaction(callback) {
   }
 }
 
-module.exports = { pool, query, withTransaction };
+async function getExistingColumns(tableName, columnNames = []) {
+  if (!tableName || columnNames.length === 0) {
+    return new Set();
+  }
+
+  const cacheKey = `${tableName}:${columnNames.slice().sort().join(',')}`;
+  if (existingColumnCache.has(cacheKey)) {
+    return existingColumnCache.get(cacheKey);
+  }
+
+  const placeholders = columnNames.map(() => '?').join(', ');
+  const rows = await query(
+    `
+      SELECT COLUMN_NAME
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME IN (${placeholders})
+    `,
+    [tableName, ...columnNames]
+  );
+
+  const existingColumns = new Set(rows.map((row) => row.COLUMN_NAME));
+  existingColumnCache.set(cacheKey, existingColumns);
+  return existingColumns;
+}
+
+module.exports = { pool, query, withTransaction, getExistingColumns };

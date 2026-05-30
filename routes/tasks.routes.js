@@ -20,6 +20,15 @@ async function getTaskTags(taskId) {
   `, [taskId]);
 }
 
+async function isWorkspaceMember(workspaceId, userId) {
+  const rows = await query(
+    'SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ? LIMIT 1',
+    [workspaceId, userId]
+  );
+
+  return Boolean(rows[0]);
+}
+
 tasksRouter.get('/', asyncHandler(async (req, res) => {
   const conditions = [];
   const params = [];
@@ -216,6 +225,13 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     }
   }
 
+  if (assignee_id && project) {
+    const assigneeIsMember = await isWorkspaceMember(project.workspace_id, assignee_id);
+    if (!assigneeIsMember) {
+      errors.assignee_id = 'Assignee must be a member of this workspace';
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return sendValidationError(res, errors);
   }
@@ -358,6 +374,12 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'due_date') && !isValidDate(req.body.due_date)) {
     return sendValidationError(res, { due_date: 'Invalid due date format' });
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && req.body.assignee_id) {
+    const assigneeIsMember = await isWorkspaceMember(existingTask.workspace_id, req.body.assignee_id);
+    if (!assigneeIsMember) {
+      return sendValidationError(res, { assignee_id: 'Assignee must be a member of this workspace' });
+    }
   }
 
   const { updates, params } = buildUpdateClause(req.body, ['title', 'description', 'status', 'priority', 'assignee_id', 'start_date', 'due_date', 'parent_task_id', 'position']);

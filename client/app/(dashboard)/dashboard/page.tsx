@@ -357,156 +357,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-6 lg:grid-cols-12">
-        {/* Recent Projects Section */}
-        <Card className="md:col-span-6 lg:col-span-8 flex flex-col shadow-sm border-slate-200 overflow-hidden">
-          <CardHeader className="pb-3 border-b bg-slate-50/50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Briefcase className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Recent Projects</CardTitle>
-                  <CardDescription className="text-xs">Projects you've worked on recently</CardDescription>
-                </div>
-              </div>
-              <Button variant="ghost" size="sm" asChild className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors">
-                <Link href="/projects" className="flex items-center gap-1">
-                  View All <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 p-0">
-            {isLoading ? (
-              <div className="p-4 space-y-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="flex items-center space-x-4">
-                    <Skeleton className="h-12 w-12 rounded-full" />
-                    <div className="space-y-2 flex-1">
-                      <Skeleton className="h-4 w-[200px]" />
-                      <Skeleton className="h-3 w-[150px]" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : recentProjects.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center bg-white h-full">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 shadow-sm text-slate-400">
-                  <LayoutGrid className="h-8 w-8" />
-                </div>
-                <h3 className="mt-4 text-base font-semibold text-slate-900">No projects found</h3>
-                <p className="mt-2 text-sm text-slate-500 max-w-[240px] mx-auto">
-                  Start by creating your first project to organize your team's tasks.
-                </p>
-                {hasPermission('projects:create') && (
-                  <Button asChild variant="outline" size="sm" className="mt-4 border-dashed">
-                    <Link href="/projects/new">Create Project</Link>
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {recentProjects.map((project) => (
-                  <Link
-                    key={project.id}
-                    href={`/projects/${project.id}`}
-                    className="flex items-center gap-4 p-5 hover:bg-slate-50 transition-all group relative overflow-hidden"
-                  >
-                    <div className="h-12 w-12 shrink-0 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold shadow-md shadow-blue-100 group-hover:scale-105 transition-transform duration-300">
-                      {project.name.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-700 transition-colors">
-                          {project.name}
-                        </p>
-                        <Badge variant="outline" className={`text-[10px] h-4.5 px-1.5 font-normal capitalize ${getStatusColor(project.status)}`}>
-                          {project.status.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {project.workspace_name || 'Project Team'}
-                      </p>
-                    </div>
-                    <div className="shrink-0 flex flex-col items-end gap-1.5">
-                      <div className="flex -space-x-2 overflow-hidden px-1">
-                        {/* Placeholder for project members avatars */}
-                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-200"></div>
-                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-300 font-medium text-[8px] flex items-center justify-center">+2</div>
-                      </div>
-                      <p className="text-[10px] text-slate-400">Updated {new Date(project.updated_at || project.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Workspace Activity / Notifications Section */}
-        <Card className="md:col-span-6 lg:col-span-4 flex flex-col shadow-sm border-slate-200 overflow-hidden">
-          <CardHeader className="pb-3 border-b bg-slate-50/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <History className="h-5 w-5 text-indigo-600" />
-              </div>
-              <CardTitle className="text-lg">Recent Activity</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 p-0">
-            {isLoading ? (
-              <div className="p-4 space-y-4">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="flex space-x-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="space-y-1.5 flex-1">
-                      <Skeleton className="h-3 w-full" />
-                      <Skeleton className="h-2 w-2/3" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : recentNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center bg-white h-full grayscale opacity-60">
-                <Bell className="h-10 w-10 text-slate-300 mb-3" />
-                <h3 className="text-sm font-medium text-slate-500">No recent activity</h3>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {recentNotifications.map((notif) => (
-                  <div key={notif.id} className="p-4 hover:bg-slate-50/80 transition-colors">
-                    <div className="flex gap-3">
-                      <div className={`mt-0.5 h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${notif.type === 'task_assigned' ? 'bg-blue-50 text-blue-600' :
-                        notif.type === 'comment' ? 'bg-purple-50 text-purple-600' : 'bg-slate-50 text-slate-600'
-                        }`}>
-                        {notif.type === 'task_assigned' ? <Briefcase className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm text-slate-900 font-medium leading-tight mb-0.5">
-                          {notif.title}
-                        </p>
-                        <p className="text-xs text-slate-500 line-clamp-1 mb-1">
-                          {notif.message}
-                        </p>
-                        <time className="text-[10px] text-slate-400">
-                          {new Date(notif.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
-                        </time>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <CardFooter className="p-3 border-t bg-slate-50/30">
-              <Button variant="link" size="sm" asChild className="w-full text-slate-500 text-xs h-auto py-0">
-                <Link href="/notifications">View all notifications</Link>
-              </Button>
-            </CardFooter>
-          </CardContent>
-        </Card>
-
         {/* Upcoming Tasks Section */}
         <Card className="md:col-span-6 lg:col-span-8 flex flex-col shadow-sm border-slate-200 overflow-hidden lg:order-last xl:order-none">
           <CardHeader className="pb-3 border-b bg-slate-50/50">
@@ -592,6 +442,156 @@ export default function DashboardPage() {
                     </Link>
                   );
                 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Workspace Activity / Notifications Section */}
+        <Card className="md:col-span-6 lg:col-span-4 flex flex-col shadow-sm border-slate-200 overflow-hidden">
+          <CardHeader className="pb-3 border-b bg-slate-50/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg">
+                <History className="h-5 w-5 text-indigo-600" />
+              </div>
+              <CardTitle className="text-lg">Recent Activity</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 p-0">
+            {isLoading ? (
+              <div className="p-4 space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex space-x-3">
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <div className="space-y-1.5 flex-1">
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-2 w-2/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : recentNotifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 text-center bg-white h-full grayscale opacity-60">
+                <Bell className="h-10 w-10 text-slate-300 mb-3" />
+                <h3 className="text-sm font-medium text-slate-500">No recent activity</h3>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {recentNotifications.map((notif) => (
+                  <div key={notif.id} className="p-4 hover:bg-slate-50/80 transition-colors">
+                    <div className="flex gap-3">
+                      <div className={`mt-0.5 h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${notif.type === 'task_assigned' ? 'bg-blue-50 text-blue-600' :
+                        notif.type === 'comment' ? 'bg-purple-50 text-purple-600' : 'bg-slate-50 text-slate-600'
+                        }`}>
+                        {notif.type === 'task_assigned' ? <Briefcase className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-900 font-medium leading-tight mb-0.5">
+                          {notif.title}
+                        </p>
+                        <p className="text-xs text-slate-500 line-clamp-1 mb-1">
+                          {notif.message}
+                        </p>
+                        <time className="text-[10px] text-slate-400">
+                          {new Date(notif.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
+                        </time>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <CardFooter className="p-3 border-t bg-slate-50/30">
+              <Button variant="link" size="sm" asChild className="w-full text-slate-500 text-xs h-auto py-0">
+                <Link href="/notifications">View all notifications</Link>
+              </Button>
+            </CardFooter>
+          </CardContent>
+        </Card>
+
+        {/* Recent Projects Section */}
+        <Card className="md:col-span-6 lg:col-span-8 flex flex-col shadow-sm border-slate-200 overflow-hidden">
+          <CardHeader className="pb-3 border-b bg-slate-50/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Briefcase className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Recent Projects</CardTitle>
+                  <CardDescription className="text-xs">Projects you've worked on recently</CardDescription>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" asChild className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors">
+                <Link href="/projects" className="flex items-center gap-1">
+                  View All <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 p-0">
+            {isLoading ? (
+              <div className="p-4 space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-4 w-[200px]" />
+                      <Skeleton className="h-3 w-[150px]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : recentProjects.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-center bg-white h-full">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 shadow-sm text-slate-400">
+                  <LayoutGrid className="h-8 w-8" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-slate-900">No projects found</h3>
+                <p className="mt-2 text-sm text-slate-500 max-w-[240px] mx-auto">
+                  Start by creating your first project to organize your team's tasks.
+                </p>
+                {hasPermission('projects:create') && (
+                  <Button asChild variant="outline" size="sm" className="mt-4 border-dashed">
+                    <Link href="/projects/new">Create Project</Link>
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {recentProjects.map((project) => (
+                  <Link
+                    key={project.id}
+                    href={`/projects/${project.id}`}
+                    className="flex items-center gap-4 p-5 hover:bg-slate-50 transition-all group relative overflow-hidden"
+                  >
+                    <div className="h-12 w-12 shrink-0 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold shadow-md shadow-blue-100 group-hover:scale-105 transition-transform duration-300">
+                      {project.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-700 transition-colors">
+                          {project.name}
+                        </p>
+                        <Badge variant="outline" className={`text-[10px] h-4.5 px-1.5 font-normal capitalize ${getStatusColor(project.status)}`}>
+                          {project.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        {project.workspace_name || 'Project Team'}
+                      </p>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-1.5">
+                      <div className="flex -space-x-2 overflow-hidden px-1">
+                        {/* Placeholder for project members avatars */}
+                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-200"></div>
+                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-300 font-medium text-[8px] flex items-center justify-center">+2</div>
+                      </div>
+                      <p className="text-[10px] text-slate-400">Updated {new Date(project.updated_at || project.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </Link>
+                ))}
               </div>
             )}
           </CardContent>

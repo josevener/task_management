@@ -161,7 +161,7 @@ export default function WorkspaceTasksPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Workspace Tasks</h1>
           <p className="text-muted-foreground mt-1">
-            Track all tasks across {activeWorkspace?.name || "this workspace"}.
+            Track all tasks across <span className="font-medium text-slate-900">{activeWorkspace?.name}</span> in one place. Use filters and grouping to manage your workflow effectively.
           </p>
         </div>
         <Button variant="outline" onClick={fetchTasks} disabled={loading} className="shrink-0 cursor-pointer">

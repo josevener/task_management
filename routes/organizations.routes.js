@@ -1,6 +1,6 @@
 const express = require('express');
 
-const { query, withTransaction } = require('../config/database');
+const { query, withTransaction, getExistingColumns } = require('../config/database');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
@@ -11,12 +11,38 @@ const organizationsRouter = express.Router();
 
 organizationsRouter.use(attachCurrentUser, requireAuth);
 
+async function getOrganizationSelectFields() {
+  const optionalColumns = [
+    'timezone',
+    'default_language',
+    'date_format',
+    'time_format',
+    'subscription_status',
+    'owner_id'
+  ];
+
+  const existingColumns = await getExistingColumns('organizations', optionalColumns);
+
+  const baseColumns = [
+    'o.id',
+    'o.name',
+    'o.slug',
+    'o.logo_url',
+    'o.subscription_tier'
+  ];
+
+  const optionalSelects = optionalColumns.map((column) => (
+    existingColumns.has(column) ? `o.${column}` : `NULL AS ${column}`
+  ));
+
+  return [...baseColumns, ...optionalSelects, 'o.created_at', 'o.updated_at'].join(',\n      ');
+}
+
 organizationsRouter.get('/', asyncHandler(async (req, res) => {
+  const selectFields = await getOrganizationSelectFields();
   const organizations = await query(`
     SELECT DISTINCT 
-      o.id, o.name, o.slug, o.logo_url, o.subscription_tier, 
-      o.timezone, o.default_language, o.date_format, o.time_format,
-      o.subscription_status, o.owner_id, o.created_at, o.updated_at
+      ${selectFields}
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -28,11 +54,10 @@ organizationsRouter.get('/', asyncHandler(async (req, res) => {
 }));
 
 organizationsRouter.get('/:id', asyncHandler(async (req, res) => {
+  const selectFields = await getOrganizationSelectFields();
   const rows = await query(`
     SELECT DISTINCT 
-      o.id, o.name, o.slug, o.logo_url, o.subscription_tier, 
-      o.timezone, o.default_language, o.date_format, o.time_format,
-      o.subscription_status, o.owner_id, o.created_at, o.updated_at
+      ${selectFields}
     FROM organizations o
     INNER JOIN workspaces w ON w.organization_id = o.id
     INNER JOIN workspace_members wm ON wm.workspace_id = w.id
@@ -178,9 +203,23 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
     }
   }
 
+  const optionalFields = ['timezone', 'default_language', 'date_format', 'time_format', 'subscription_status'];
+  const existingColumns = await getExistingColumns('organizations', optionalFields);
+  const unsupportedFieldErrors = {};
+
+  for (const field of optionalFields) {
+    if (Object.prototype.hasOwnProperty.call(input, field) && !existingColumns.has(field)) {
+      unsupportedFieldErrors[field] = 'This setting is unavailable until the organization settings migration is applied';
+    }
+  }
+
+  if (Object.keys(unsupportedFieldErrors).length > 0) {
+    return sendValidationError(res, unsupportedFieldErrors);
+  }
+
   const { updates, params } = buildUpdateClause(input, [
-    'name', 'slug', 'subscription_tier', 'logo_url', 
-    'timezone', 'default_language', 'date_format', 'time_format', 'subscription_status'
+    'name', 'slug', 'subscription_tier', 'logo_url',
+    ...optionalFields.filter((field) => existingColumns.has(field))
   ]);
   if (updates.length === 0) {
     return sendError(res, 'No fields to update', 400);
@@ -192,7 +231,13 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
     WHERE id = ?
   `, [...params, req.params.id]);
 
-  const rows = await query('SELECT * FROM organizations WHERE id = ?', [req.params.id]);
+  const selectFields = await getOrganizationSelectFields();
+  const rows = await query(`
+    SELECT ${selectFields}
+    FROM organizations o
+    WHERE o.id = ?
+    LIMIT 1
+  `, [req.params.id]);
   return sendSuccess(res, { organization: rows[0] });
 }));
 

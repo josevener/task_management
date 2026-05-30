@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 
 const crypto = require('crypto');
-const { query, withTransaction } = require('../config/database');
+const { query, withTransaction, getExistingColumns } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
@@ -13,6 +13,29 @@ const { sendMail } = require('../utils/mailer');
 const workspacesRouter = express.Router();
 
 workspacesRouter.use(attachCurrentUser, requireAuth);
+
+async function getOrganizationWorkspaceSelect() {
+  const orgColumns = await getExistingColumns('organizations', [
+    'default_language',
+    'timezone',
+    'date_format',
+    'time_format'
+  ]);
+
+  const optionalFields = [
+    'default_language',
+    'timezone',
+    'date_format',
+    'time_format'
+  ].map((column) => (
+    orgColumns.has(column) ? `o.${column}` : `NULL AS ${column}`
+  ));
+
+  return `
+    o.name AS organization_name,
+    ${optionalFields.join(',\n           ')}
+  `;
+}
 
 workspacesRouter.get('/', asyncHandler(async (req, res) => {
   const params = [req.currentUser.id];
@@ -39,10 +62,11 @@ workspacesRouter.get('/', asyncHandler(async (req, res) => {
 }));
 
 workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
+  const organizationSelect = await getOrganizationWorkspaceSelect();
   const rows = await query(`
     SELECT w.id, w.organization_id, w.name, w.slug, w.description,
            w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           o.name AS organization_name, o.default_language, o.timezone, o.date_format, o.time_format,
+           ${organizationSelect},
            r.name AS user_role, r.id AS user_role_id, r.is_system_role
     FROM workspaces w
     INNER JOIN organizations o ON o.id = w.organization_id

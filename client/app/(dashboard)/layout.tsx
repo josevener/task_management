@@ -61,7 +61,7 @@ export default function DashboardLayout({
         </Sheet>
 
         {/* Main Content Areas */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col min-h-0">
           <Header
             onMenuClick={() => setSidebarOpen(true)}
             isSidebarCollapsed={isSidebarCollapsed}
