@@ -40,19 +40,13 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`mb-3 transition-transform ${snapshot.isDragging ? 'z-50' : ''}`}
-          style={{
-            ...provided.draggableProps.style,
-            // Slightly rotate when dragging for a nice effect
-            transform: snapshot.isDragging
-              ? `${provided.draggableProps.style?.transform} rotate(2deg)`
-              : provided.draggableProps.style?.transform,
-          }}
+          className={`mb-3 ${snapshot.isDragging ? 'z-50' : ''}`}
+          style={provided.draggableProps.style}
         >
           <Card
             className={`rounded-xl border border-slate-200/80 cursor-pointer transition-all duration-200 premium-card-hover ${
               snapshot.isDragging 
-                ? 'shadow-xl ring-2 ring-blue-500 bg-white border-blue-500 scale-[1.02]' 
+                ? 'shadow-xl ring-2 ring-blue-500 bg-white border-blue-500 scale-[1.02] rotate-2' 
                 : 'shadow-sm hover:border-slate-350 hover:shadow-md'
             }`}
             onClick={onClick}

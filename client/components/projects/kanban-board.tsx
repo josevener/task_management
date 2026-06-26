@@ -1,7 +1,26 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
+import { DragDropContext, Droppable, DropResult, DroppableProps } from "@hello-pangea/dnd";
+
+// Custom Droppable wrapper to resolve Next.js Strict Mode hydration/double-render freeze issues
+function StrictModeDroppable({ children, ...props }: DroppableProps) {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const animation = requestAnimationFrame(() => setEnabled(true));
+    return () => {
+      cancelAnimationFrame(animation);
+      setEnabled(false);
+    };
+  }, []);
+
+  if (!enabled) {
+    return null;
+  }
+
+  return <Droppable {...props}>{children}</Droppable>;
+}
 import { TaskCard } from "./task-card";
 import type { Task } from "@/lib/types";
 import { updateTaskStatus } from "@/lib/api/tasks";
@@ -26,12 +45,17 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoardProps) {
   const { showToast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
   const [boardData, setBoardData] = useState<BoardData>({
     todo: [],
     in_progress: [],
     review: [],
     done: [],
   });
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Initialize board columns on mount or when tasks change
   useEffect(() => {
@@ -122,6 +146,31 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
     }
   };
 
+  if (!isMounted) {
+    return (
+      <div className="flex h-full gap-6 overflow-x-auto pb-2.5 items-stretch">
+        {COLUMNS.map((col) => {
+          const tasks = boardData[col.id] || [];
+
+          return (
+            <div key={col.id} className="flex-1 min-w-[280px] max-w-[420px] flex flex-col h-full max-h-full pb-2">
+              {/* Column Header */}
+              <div className="flex items-center justify-between mb-3 px-1.5 shrink-0">
+                <h3 className="font-semibold text-sm text-slate-700">{col.title}</h3>
+                <span className="bg-slate-200/80 text-slate-600 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                  {tasks.length}
+                </span>
+              </div>
+
+              {/* Droppable Area Placeholder */}
+              <div className={`flex-1 rounded-xl p-3 min-h-[150px] border ${col.bg}`}></div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full gap-6 overflow-x-auto pb-2.5 items-stretch">
@@ -139,7 +188,7 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
               </div>
 
               {/* Droppable Area */}
-              <Droppable droppableId={col.id}>
+              <StrictModeDroppable droppableId={col.id}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
@@ -161,7 +210,7 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
                     {provided.placeholder}
                   </div>
                 )}
-              </Droppable>
+              </StrictModeDroppable>
             </div>
           );
         })}
