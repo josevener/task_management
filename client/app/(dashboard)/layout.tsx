@@ -17,7 +17,7 @@ export default function DashboardLayout({
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Close sidebar when route changes on mobile
   useEffect(() => {
