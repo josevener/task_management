@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 
 const crypto = require('crypto');
+const { env } = require('../config/env');
 const { query, withTransaction, getExistingColumns } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
@@ -35,6 +36,23 @@ async function getOrganizationWorkspaceSelect() {
     o.name AS organization_name,
     ${optionalFields.join(',\n           ')}
   `;
+}
+
+async function canCreateWorkspaceInOrganization(organizationId, userId) {
+  const accessRows = await query(`
+    SELECT DISTINCT o.id
+    FROM organizations o
+    INNER JOIN workspaces w ON w.organization_id = o.id
+    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    LEFT JOIN role_permissions rp ON rp.role_id = wm.role_id
+    LEFT JOIN permissions p ON p.id = rp.permission_id AND p.action = 'workspaces:create'
+    WHERE o.id = ?
+      AND wm.user_id = ?
+      AND (o.owner_id = ? OR LOWER(COALESCE(wm.role, '')) = 'admin' OR p.id IS NOT NULL)
+    LIMIT 1
+  `, [organizationId, userId, userId]);
+
+  return Boolean(accessRows[0]);
 }
 
 workspacesRouter.get('/', asyncHandler(async (req, res) => {
@@ -135,6 +153,11 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
 
   if (Object.keys(errors).length > 0) {
     return sendValidationError(res, errors);
+  }
+
+  const canCreate = await canCreateWorkspaceInOrganization(organization_id, req.currentUser.id);
+  if (!canCreate) {
+    return sendError(res, 'You do not have permission to create workspaces in this organization', 403);
   }
 
   const existing = await query(`
@@ -289,6 +312,11 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
     return sendError(res, 'Workspace access denied', 403);
   }
 
+  const canViewMembers = await checkPermission(req.params.workspaceId, req.currentUser.id, 'members:view');
+  if (!canViewMembers) {
+    return sendError(res, 'You do not have permission to view workspace members', 403);
+  }
+
   const members = await query(`
     SELECT wm.id AS membership_id, r.name AS role, wm.created_at,
            u.id AS user_id, u.first_name, u.last_name, u.email
@@ -335,16 +363,16 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
   }
 
   // Check if already a member before proceeding with user creation/fetch
-  const [existingMemberships] = await query(`
+  const existingMemberships = await query(`
     SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = (SELECT id FROM users WHERE email = ?)
   `, [req.params.workspaceId, email]);
 
-  if (existingMemberships && existingMemberships.length > 0) {
+  if (existingMemberships.length > 0) {
     return sendValidationError(res, { email: 'User is already a member of this workspace' });
   }
 
-  const [workspaceRows] = await query('SELECT name FROM workspaces WHERE id = ?', [req.params.workspaceId]);
-  const workspaceName = workspaceRows ? workspaceRows.name : 'Workspace';
+  const workspaceRows = await query('SELECT name FROM workspaces WHERE id = ?', [req.params.workspaceId]);
+  const workspaceName = workspaceRows[0] ? workspaceRows[0].name : 'Workspace';
 
   const member = await withTransaction(async (connection) => {
     let user_id_to_add;
@@ -379,7 +407,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       `, [email, token, expiresAt]);
 
       // Verification Link
-      const verifyLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+      const verifyLink = `${env.appOrigin}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
       // Verification Email
       const htmlContent = `
@@ -419,7 +447,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           <p><strong>${req.currentUser.first_name} ${req.currentUser.last_name}</strong> has added you to the <strong>${workspaceName}</strong> workspace.</p>
           <p>You can now access its projects and tasks from your dashboard.</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.APP_ORIGIN || 'http://localhost:3000'}/dashboard" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+            <a href="${env.appOrigin}/dashboard" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
           </div>
         </div>
       `;
@@ -520,12 +548,8 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
     }
   }
 
-  // Check email uniqueness if email is being updated
-  if (email && String(email).trim()) {
-    const existingEmailRows = await query('SELECT id FROM users WHERE email = ? AND id != ?', [email, targetMember.user_id]);
-    if (existingEmailRows.length > 0) {
-      errors.email = 'This email is already taken by another user';
-    }
+  if (first_name || last_name || email) {
+    errors.profile = 'Profile updates must be managed from the user account settings.';
   }
 
   if (Object.keys(errors).length > 0) {
@@ -537,16 +561,6 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
       await connection.execute('UPDATE workspace_members SET role_id = ? WHERE id = ?', [role_id, req.params.membershipId]);
     }
 
-    if (first_name || last_name || email) {
-      const updates = [];
-      const params = [];
-      if (first_name) { updates.push('first_name = ?'); params.push(String(first_name).trim()); }
-      if (last_name) { updates.push('last_name = ?'); params.push(String(last_name).trim()); }
-      if (email) { updates.push('email = ?'); params.push(String(email).trim()); }
-
-      params.push(targetMember.user_id);
-      await connection.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
-    }
   });
 
   return sendSuccess(res, { message: 'Member details updated successfully' });
@@ -586,7 +600,18 @@ workspacesRouter.delete('/members/:membershipId', asyncHandler(async (req, res) 
     }
   }
 
-  await query('DELETE FROM workspace_members WHERE id = ?', [req.params.membershipId]);
+  await withTransaction(async (connection) => {
+    // Removing the member's workspace-scoped project memberships prevents stale ownership access.
+    await connection.execute(`
+      DELETE pm
+      FROM project_members pm
+      INNER JOIN projects p ON p.id = pm.project_id
+      WHERE p.workspace_id = ? AND pm.user_id = ?
+    `, [targetMember.workspace_id, targetMember.user_id]);
+
+    await connection.execute('DELETE FROM workspace_members WHERE id = ?', [req.params.membershipId]);
+  });
+
   return sendSuccess(res, { message: 'Member removed successfully' });
 }));
 

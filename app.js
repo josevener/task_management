@@ -15,11 +15,33 @@ const { errorHandler } = require('./middleware/error-handler');
 
 const app = express();
 
+const defaultDevOrigins = [
+  'http://localhost:4440',
+];
+
+const allowedOrigins = new Set([
+  ...env.appOrigins,
+  ...(env.nodeEnv !== 'production' ? defaultDevOrigins : []),
+]);
+
 app.use(cors({
-  origin: env.appOrigin,
+  origin(origin, callback) {
+    // Allow same-origin/non-browser requests that don't send an Origin header.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true,
 }));
+
 app.use(express.json());
+
 app.use(session({
   name: 'task_management.sid',
   secret: env.sessionSecret,

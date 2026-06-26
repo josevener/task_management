@@ -17,6 +17,19 @@ import type { NextRequest } from 'next/server';
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const isLoopbackHostname = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1';
+
+  const areOriginsEquivalent = (currentOrigin: URL, targetOrigin: URL) => {
+    if (currentOrigin.origin === targetOrigin.origin) {
+      return true;
+    }
+
+    return currentOrigin.protocol === targetOrigin.protocol &&
+      currentOrigin.port === targetOrigin.port &&
+      isLoopbackHostname(currentOrigin.hostname) &&
+      isLoopbackHostname(targetOrigin.hostname);
+  };
+
   // Get the session cookie
   const sessionToken = request.cookies.get('task_management.sid');
   const isAuthenticated = !!sessionToken;
@@ -51,15 +64,23 @@ export async function proxy(request: NextRequest) {
   // 3. Verify session if authenticated and on dashboard
   if (isDashboardPage && isAuthenticated) {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8500/api';
-      const response = await fetch(`${apiUrl}/auth/me`, {
+      const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const requestOrigin = new URL(request.nextUrl.origin);
+      const fallbackApiUrl = `${request.nextUrl.protocol}//${request.nextUrl.hostname}:5440/api`;
+      const apiBaseUrl = configuredApiUrl || fallbackApiUrl;
+      const apiOrigin = new URL(apiBaseUrl);
+      const sessionCheckUrl = areOriginsEquivalent(requestOrigin, apiOrigin)
+        ? new URL('/api/auth/me', request.url)
+        : `${apiBaseUrl}/auth/me`;
+
+      const response = await fetch(sessionCheckUrl, {
         headers: {
-          'Cookie': `task_management.sid=${sessionToken.value}`
+          Cookie: request.headers.get('cookie') || `task_management.sid=${sessionToken.value}`
         },
         cache: 'no-store'
       });
 
-      if (!response.ok) {
+      if (response.status === 401) {
         // forceful logout
         const redirectResponse = NextResponse.redirect(new URL('/login', request.url));
         redirectResponse.cookies.delete('task_management.sid');

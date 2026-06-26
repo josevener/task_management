@@ -11,6 +11,47 @@ const organizationsRouter = express.Router();
 
 organizationsRouter.use(attachCurrentUser, requireAuth);
 
+async function canCreateOrganization(userId) {
+  const membershipRows = await query(`
+    SELECT wm.id
+    FROM workspace_members wm
+    WHERE wm.user_id = ?
+    LIMIT 1
+  `, [userId]);
+
+  if (!membershipRows[0]) {
+    return true;
+  }
+
+  const permissionRows = await query(`
+    SELECT rp.permission_id
+    FROM workspace_members wm
+    INNER JOIN role_permissions rp ON rp.role_id = wm.role_id
+    INNER JOIN permissions p ON p.id = rp.permission_id
+    WHERE wm.user_id = ? AND p.action = 'organizations:create'
+    LIMIT 1
+  `, [userId]);
+
+  return Boolean(permissionRows[0]);
+}
+
+async function canManageOrganization(userId, organizationId) {
+  const accessRows = await query(`
+    SELECT DISTINCT o.id
+    FROM organizations o
+    INNER JOIN workspaces w ON w.organization_id = o.id
+    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+    LEFT JOIN role_permissions rp ON rp.role_id = wm.role_id
+    LEFT JOIN permissions p ON p.id = rp.permission_id AND p.action = 'organizations:edit'
+    WHERE o.id = ?
+      AND wm.user_id = ?
+      AND (o.owner_id = ? OR LOWER(COALESCE(wm.role, '')) = 'admin' OR p.id IS NOT NULL)
+    LIMIT 1
+  `, [organizationId, userId, userId]);
+
+  return Boolean(accessRows[0]);
+}
+
 async function getOrganizationSelectFields() {
   const optionalColumns = [
     'timezone',
@@ -91,6 +132,11 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
+  const canCreate = await canCreateOrganization(req.currentUser.id);
+  if (!canCreate) {
+    return sendError(res, 'You do not have permission to create organizations', 403);
+  }
+
   const existing = await query('SELECT id FROM organizations WHERE slug = ?', [slug]);
   if (existing.length > 0) {
     return sendValidationError(res, { slug: 'This slug is already taken' });
@@ -169,22 +215,10 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
 }));
 
 organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const adminRows = await query(`
-    SELECT o.id, o.owner_id
-    FROM organizations o
-    INNER JOIN workspaces w ON w.organization_id = o.id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE o.id = ? AND wm.user_id = ? AND (wm.role = 'admin' OR o.owner_id = ?)
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id, req.currentUser.id]);
-
-  if (!adminRows[0]) {
+  const canManage = await canManageOrganization(req.currentUser.id, req.params.id);
+  if (!canManage) {
     return sendError(res, 'Organization not found or you do not have permission to edit it', 404);
   }
-
-  // Strictly check owner for critical changes if needed, but for now allow admins to edit basic info
-  // However, the user said "Only the organization owner can create, transfer ownership, and delete"
-  // so for PATCH, we'll keep it as admin/owner for now unless specified otherwise.
 
   const input = { ...req.body };
   if (Object.prototype.hasOwnProperty.call(input, 'name') && !String(input.name || '').trim()) {
@@ -242,17 +276,8 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 organizationsRouter.get('/:id/members', asyncHandler(async (req, res) => {
-  // Check access: user must be an admin in at least one workspace of this organization
-  const adminRows = await query(`
-    SELECT DISTINCT o.id
-    FROM organizations o
-    INNER JOIN workspaces w ON w.organization_id = o.id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE o.id = ? AND wm.user_id = ? AND wm.role = 'admin'
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
-
-  if (!adminRows[0]) {
+  const canManage = await canManageOrganization(req.currentUser.id, req.params.id);
+  if (!canManage) {
     return sendError(res, 'Organization not found or access denied', 404);
   }
 

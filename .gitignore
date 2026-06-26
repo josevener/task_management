@@ -1,6 +1,7 @@
 node_modules/
 .env
 npm-debug.log*
+logs/
 logs/backend-error.log
 logs/backend-out.log
 logs/frontend-error.log

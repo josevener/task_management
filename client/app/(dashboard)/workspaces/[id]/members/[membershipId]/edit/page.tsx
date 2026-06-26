@@ -68,9 +68,6 @@ export default function EditWorkspaceMemberPage() {
     try {
       setIsSaving(true);
       await updateWorkspaceMember(Number(membershipId), {
-        first_name: data.first_name,
-        last_name: data.last_name,
-        email: data.email,
         role_id: Number(data.role_id)
       });
       showToast("Member updated successfully", "success");
@@ -102,7 +99,7 @@ export default function EditWorkspaceMemberPage() {
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Edit Member</h1>
-          <p className="text-muted-foreground">Modify user profile details and adjust workspace access roles.</p>
+          <p className="text-muted-foreground">Adjust this member's workspace role. Profile details are managed from the user's own account settings.</p>
         </div>
       </div>
 
@@ -113,7 +110,7 @@ export default function EditWorkspaceMemberPage() {
             Member Configuration
           </CardTitle>
           <CardDescription>
-            Update the member's profile details and workspace role.
+            Update the member's workspace role.
           </CardDescription>
         </CardHeader>
         <CardContent>

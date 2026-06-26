@@ -46,9 +46,12 @@ export const notificationApi = {
     // For simplicity, we create the EventSource pointing directly to the stream endpoint.
     // In a prod app, we might proxy this or attach tokens to headers if supported.
     // Here relying on cookies/credentials since frontend and backend share domain.
-    const url = process.env.NEXT_PUBLIC_API_URL
-      ? `${process.env.NEXT_PUBLIC_API_URL}/notifications/stream`
-      : 'http://localhost:8500/api/notifications/stream';
+    const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5440/api';
+    const url = typeof window !== 'undefined'
+      ? (window.location.origin === new URL(configuredApiUrl, window.location.origin).origin
+        ? '/api/notifications/stream'
+        : `${configuredApiUrl}/notifications/stream`)
+      : `${configuredApiUrl}/notifications/stream`;
 
     const eventSource = new EventSource(url, { withCredentials: true });
 

@@ -3,10 +3,17 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
+function resolvePublicAppOrigin() {
+  return process.env.PUBLIC_APP_ORIGIN || process.env.APP_ORIGIN || 'http://localhost:4440';
+}
+
+const appOrigin = resolvePublicAppOrigin();
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
-  appOrigin: process.env.APP_ORIGIN || 'http://localhost:3000',
+  appOrigin,
+  appOrigins: [appOrigin],
   sessionSecret: process.env.SESSION_SECRET || 'change-me-in-production',
   dbHost: process.env.DB_HOST || 'localhost',
   dbPort: Number(process.env.DB_PORT || 3306),

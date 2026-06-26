@@ -7,7 +7,48 @@ import axios from 'axios';
  * Uses axios so request configuration and error handling stay consistent.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8500/api';
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function areOriginsEquivalent(currentOrigin: URL, targetOrigin: URL): boolean {
+  if (currentOrigin.origin === targetOrigin.origin) {
+    return true;
+  }
+
+  return currentOrigin.protocol === targetOrigin.protocol &&
+    currentOrigin.port === targetOrigin.port &&
+    isLoopbackHostname(currentOrigin.hostname) &&
+    isLoopbackHostname(targetOrigin.hostname);
+}
+
+function getDefaultApiUrl(): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:5440/api`;
+  }
+
+  return 'http://localhost:5440/api';
+}
+
+function getApiBaseUrl(): string {
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL || getDefaultApiUrl();
+
+  if (typeof window !== 'undefined') {
+    const currentOrigin = new URL(window.location.origin);
+    const apiOrigin = new URL(configuredApiUrl, window.location.origin);
+
+    // Use same-origin requests when the browser is already on the backend host/port,
+    // including localhost/127.0.0.1 loopback aliases.
+    if (areOriginsEquivalent(currentOrigin, apiOrigin)) {
+      return '/api';
+    }
+
+    // In split-port development, keep using the configured backend URL.
+    return configuredApiUrl;
+  }
+
+  return configuredApiUrl;
+}
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -46,7 +87,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: {
 }): Promise<T> {
   try {
     const response = await axios.request<ApiResponse<T>>({
-      url: `${API_BASE_URL}${endpoint}`,
+      url: `${getApiBaseUrl()}${endpoint}`,
       method: options.method,
       data: options.data,
       withCredentials: true,

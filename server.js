@@ -1,9 +1,19 @@
-const { app, env } = require('./app');
+const { app, env } = require("./app");
+const { startCronJobs } = require("./utils/cron-jobs");
 
-const { startCronJobs } = require('./utils/cron-jobs');
+function startServer() {
+  const port = env.port || process.env.PORT || 5440;
 
-app.listen(env.port, () => {
-  // Keep startup output minimal so local debugging stays readable.
-  console.log(`Backend listening on http://127.0.0.1:${env.port}`);
-  startCronJobs();
-});
+  app.listen(port, () => {
+    console.log(`API server listening on http://localhost:${port}`);
+
+    try {
+      startCronJobs();
+    }
+    catch (err) {
+      console.log(`${new Date().toISOString()} >> Server: Failed to start cron jobs:`, err);
+    }
+  });
+}
+
+startServer();

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const { query, withTransaction } = require('../config/database');
+const { env } = require('../config/env');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
@@ -12,6 +13,36 @@ const { sendMail } = require('../utils/mailer');
 const authRouter = express.Router();
 
 authRouter.use(attachCurrentUser);
+
+async function cleanupPendingRegistration(email) {
+  await withTransaction(async (connection) => {
+    const [userRows] = await connection.execute(`
+      SELECT id
+      FROM users
+      WHERE email = ? AND is_active = FALSE AND email_verified_at IS NULL
+      LIMIT 1
+    `, [email]);
+
+    const pendingUser = userRows[0];
+    if (!pendingUser) {
+      return;
+    }
+
+    const [membershipRows] = await connection.execute(`
+      SELECT id
+      FROM workspace_members
+      WHERE user_id = ?
+      LIMIT 1
+    `, [pendingUser.id]);
+
+    if (membershipRows[0]) {
+      return;
+    }
+
+    await connection.execute('DELETE FROM email_verification_tokens WHERE email = ?', [email]);
+    await connection.execute('DELETE FROM users WHERE id = ?', [pendingUser.id]);
+  });
+}
 
 authRouter.post('/login', asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim();
@@ -106,23 +137,24 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
   }
 
   const password_hash = await bcrypt.hash(password, 10);
-  const result = await query(`
-    INSERT INTO users (email, password_hash, first_name, last_name, is_active)
-    VALUES (?, ?, ?, ?, FALSE)
-  `, [email, password_hash, first_name, last_name]);
-
-  // Generate 64-char hex token
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
+  expiresAt.setHours(expiresAt.getHours() + 24);
 
-  await query(`
-    INSERT INTO email_verification_tokens (email, token, expires_at)
-    VALUES (?, ?, ?)
-  `, [email, token, expiresAt]);
+  await withTransaction(async (connection) => {
+    await connection.execute(`
+      INSERT INTO users (email, password_hash, first_name, last_name, is_active)
+      VALUES (?, ?, ?, ?, FALSE)
+    `, [email, password_hash, first_name, last_name]);
+
+    await connection.execute(`
+      INSERT INTO email_verification_tokens (email, token, expires_at)
+      VALUES (?, ?, ?)
+    `, [email, token, expiresAt]);
+  });
 
   // Send Verification Link via email
-  const verifyLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+  const verifyLink = `${env.appOrigin}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -138,11 +170,17 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     </div>
   `;
 
-  await sendMail({
-    to: email,
-    subject: 'Zentrix - Verify Your Email',
-    html: htmlContent,
-  });
+  try {
+    await sendMail({
+      to: email,
+      subject: 'Zentrix - Verify Your Email',
+      html: htmlContent,
+    });
+  }
+  catch (error) {
+    await cleanupPendingRegistration(email);
+    throw error;
+  }
 
   return sendSuccess(res, {
     message: 'Registration successful. Please check your email for the verification link.',
@@ -493,7 +531,7 @@ authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
   `, [email, token, expiresAt]);
 
   // 6. Send the email via Hostinger
-  const resetLink = `${process.env.APP_ORIGIN || 'http://localhost:3000'}/reset-password?token=${token}`;
+  const resetLink = `${env.appOrigin}/reset-password?token=${token}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">

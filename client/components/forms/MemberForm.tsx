@@ -54,7 +54,7 @@ export function MemberForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.first_name.trim() || !formData.email.trim() || !formData.role_id) return;
+    if ((!isEdit && (!formData.first_name.trim() || !formData.email.trim())) || !formData.role_id) return;
     onSubmit(formData);
   };
 
@@ -72,6 +72,7 @@ export function MemberForm({
               placeholder="e.g. John"
               className="pl-10"
               required
+              disabled={isEdit}
             />
             <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           </div>
@@ -87,11 +88,13 @@ export function MemberForm({
               onChange={handleChange}
               placeholder="e.g. Doe"
               className="pl-10"
+              disabled={isEdit}
             />
             <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           </div>
         </div>
       </div>
+      {isEdit && <p className="text-xs text-muted-foreground">Profile details are read-only here to avoid changing the user's global account information from a workspace screen.</p>}
 
       <div className="space-y-2">
         <Label htmlFor="email">Email Address <span className="text-red-500">*</span></Label>
@@ -148,7 +151,7 @@ export function MemberForm({
         <Button 
           type="submit" 
           className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer" 
-          disabled={isSubmitting || !formData.first_name.trim() || !formData.email.trim() || !formData.role_id}
+          disabled={isSubmitting || (!isEdit && (!formData.first_name.trim() || !formData.email.trim())) || !formData.role_id}
         >
           {isSubmitting ? (
             <>

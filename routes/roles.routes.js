@@ -7,18 +7,24 @@ const { sendError, sendSuccess, sendValidationError } = require('../utils/respon
 const rolesRouter = express.Router();
 rolesRouter.use(attachCurrentUser, requireAuth);
 
-// Helper to check if user has permission to manage roles
-const checkRoleManagePermission = async (workspaceId, userId) => {
+async function hasRolePermission(workspaceId, userId, actions) {
+  const requestedActions = Array.isArray(actions) ? actions : [actions];
+  if (requestedActions.length === 0) {
+    return false;
+  }
+
+  const placeholders = requestedActions.map(() => '?').join(', ');
   const rows = await query(`
     SELECT rp.permission_id 
     FROM workspace_members wm
     INNER JOIN role_permissions rp ON rp.role_id = wm.role_id
     INNER JOIN permissions p ON p.id = rp.permission_id
-    WHERE wm.workspace_id = ? AND wm.user_id = ? AND p.action = 'roles:manage'
-  `, [workspaceId, userId]);
+    WHERE wm.workspace_id = ? AND wm.user_id = ? AND p.action IN (${placeholders})
+    LIMIT 1
+  `, [workspaceId, userId, ...requestedActions]);
   
   return rows.length > 0;
-};
+}
 
 const getRoleInWorkspace = async (workspaceId, roleId) => {
   const rows = await query(
@@ -34,8 +40,8 @@ rolesRouter.get('/workspaces/:workspaceId/roles', asyncHandler(async (req, res) 
   const { workspaceId } = req.params;
   
   // Verify member
-  const memberRows = await query('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [workspaceId, req.currentUser.id]);
-  if (!memberRows[0]) return sendError(res, 'Access denied to workspace', 403);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:view', 'roles:manage']);
+  if (!hasPerm) return sendError(res, 'You do not have permission to view roles', 403);
 
   const roles = await query(`
     SELECT r.id, r.name, r.description, r.is_system_role, COUNT(wm.id) as default_user_count
@@ -54,8 +60,8 @@ rolesRouter.post('/workspaces/:workspaceId/roles', asyncHandler(async (req, res)
   const { workspaceId } = req.params;
   const { name, description } = req.body;
   
-  const hasPerm = await checkRoleManagePermission(workspaceId, req.currentUser.id);
-  if (!hasPerm) return sendError(res, 'You do not have permission to manage roles', 403);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:create', 'roles:manage']);
+  if (!hasPerm) return sendError(res, 'You do not have permission to create roles', 403);
 
   if (!name || name.trim() === '') return sendValidationError(res, { name: 'Role name is required' });
 
@@ -68,9 +74,9 @@ rolesRouter.post('/workspaces/:workspaceId/roles', asyncHandler(async (req, res)
     [workspaceId, name.trim(), description || null]
   );
 
-  const [newRole] = await query('SELECT * FROM roles WHERE id = ?', [result.insertId]);
+  const newRoleRows = await query('SELECT * FROM roles WHERE id = ?', [result.insertId]);
   
-  return sendSuccess(res, { role: newRole }, 201);
+  return sendSuccess(res, { role: newRoleRows[0] }, 201);
 }));
 
 // PUT /workspaces/:workspaceId/roles/:roleId (Update)
@@ -78,8 +84,8 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async (re
   const { workspaceId, roleId } = req.params;
   const { name, description } = req.body;
   
-  const hasPerm = await checkRoleManagePermission(workspaceId, req.currentUser.id);
-  if (!hasPerm) return sendError(res, 'You do not have permission to manage roles', 403);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:edit', 'roles:manage']);
+  if (!hasPerm) return sendError(res, 'You do not have permission to edit roles', 403);
 
   const rows = await query('SELECT * FROM roles WHERE id = ? AND workspace_id = ?', [roleId, workspaceId]);
   if (!rows[0]) return sendError(res, 'Role not found', 404);
@@ -97,8 +103,8 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async (re
 
   await query('UPDATE roles SET name = ?, description = ? WHERE id = ?', [finalName, description || null, roleId]);
   
-  const [updatedRole] = await query('SELECT * FROM roles WHERE id = ?', [roleId]);
-  return sendSuccess(res, { role: updatedRole });
+  const updatedRoleRows = await query('SELECT * FROM roles WHERE id = ?', [roleId]);
+  return sendSuccess(res, { role: updatedRoleRows[0] });
 }));
 
 // DELETE /workspaces/:workspaceId/roles/:roleId
@@ -106,8 +112,8 @@ rolesRouter.delete('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async 
   const { workspaceId, roleId } = req.params;
   const { fallback_role_id } = req.body; // In case we need to reassign users
   
-  const hasPerm = await checkRoleManagePermission(workspaceId, req.currentUser.id);
-  if (!hasPerm) return sendError(res, 'You do not have permission to manage roles', 403);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:delete', 'roles:manage']);
+  if (!hasPerm) return sendError(res, 'You do not have permission to delete roles', 403);
 
   const rows = await query('SELECT * FROM roles WHERE id = ? AND workspace_id = ?', [roleId, workspaceId]);
   if (!rows[0]) return sendError(res, 'Role not found', 404);
@@ -134,8 +140,8 @@ rolesRouter.delete('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async 
 rolesRouter.get('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandler(async (req, res) => {
   const { workspaceId, roleId } = req.params;
   
-  const memberRows = await query('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [workspaceId, req.currentUser.id]);
-  if (!memberRows[0]) return sendError(res, 'Access denied', 403);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:view', 'roles:manage']);
+  if (!hasPerm) return sendError(res, 'You do not have permission to view role permissions', 403);
 
   const role = await getRoleInWorkspace(workspaceId, roleId);
   if (!role) return sendError(res, 'Role not found', 404);
@@ -155,7 +161,7 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
   const { workspaceId, roleId } = req.params;
   const { permission_ids } = req.body; // Array of permission IDs
   
-  const hasPerm = await checkRoleManagePermission(workspaceId, req.currentUser.id);
+  const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:edit', 'roles:manage']);
   if (!hasPerm) return sendError(res, 'You do not have permission to manage role permissions', 403);
 
   if (!Array.isArray(permission_ids)) return sendValidationError(res, { permission_ids: 'Must be an array of permission IDs' });

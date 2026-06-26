@@ -176,10 +176,11 @@ projectsRouter.patch('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT p.id, p.workspace_id, pm.role AS project_role
     FROM projects p
+    INNER JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?
     LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
     WHERE p.id = ?
     LIMIT 1
-  `, [req.currentUser.id, req.params.id]);
+  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
 
   const existingProject = rows[0];
   if (!existingProject) {
@@ -228,10 +229,11 @@ projectsRouter.delete('/:id', asyncHandler(async (req, res) => {
   const rows = await query(`
     SELECT p.id, p.workspace_id, pm.role AS project_role
     FROM projects p
+    INNER JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?
     LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
     WHERE p.id = ?
     LIMIT 1
-  `, [req.currentUser.id, req.params.id]);
+  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
 
   const existingProject = rows[0];
   if (!existingProject) {

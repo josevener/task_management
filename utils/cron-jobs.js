@@ -40,7 +40,7 @@ async function checkOverdueTasks() {
       ]);
 
       // Broadcast via SSE if the user is currently online
-      const [newNotif] = await query(`
+      const newNotif = await query(`
         SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
         FROM notifications n
         LEFT JOIN workspaces w ON n.related_workspace_id = w.id
