@@ -96,7 +96,7 @@ export default function RolesPage() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto w-full">
-        <div className="max-w-5xl mx-auto py-4">
+        <div className="w-full py-4">
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <table className="w-full text-left border-collapse">
               <thead>

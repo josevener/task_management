@@ -234,7 +234,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="w-full space-y-8 animate-in fade-in duration-500">
       {/* Welcome & Quick Actions Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -275,82 +275,90 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Metrics Section */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-white to-slate-50 group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-1 group-hover:scale-110 transition-transform">
-            <AlertCircle size={64} color="red" />
-          </div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Overdue Tasks</CardTitle>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Overdue Tasks Card */}
+        <Card className="relative overflow-hidden border border-slate-200/60 shadow-sm bg-gradient-to-br from-white to-slate-50/50 premium-card-hover rounded-xl group">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-red-500/10 rounded-full blur-2xl group-hover:bg-red-500/15 transition-all duration-300 pointer-events-none" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">Overdue Tasks</CardTitle>
+            <div className="p-2 bg-red-50 rounded-lg text-red-600 shrink-0">
+              <AlertCircle size={16} />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-9 w-16 mb-1" />
             ) : (
-              <div className="text-3xl font-bold text-slate-900">{overdueTasks}</div>
+              <div className="text-3xl font-bold text-slate-900 tracking-tight">{overdueTasks}</div>
             )}
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
               {overdueTasks > 0 ? (
-                <span className="text-red-500 font-medium">Requires attention</span>
+                <span className="text-red-650 font-semibold animate-pulse">Requires attention</span>
               ) : (
-                <span className="text-green-600 font-medium">Clear for now</span>
+                <span className="text-green-600 font-semibold">All caught up</span>
               )}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-white to-slate-50 group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-1 group-hover:scale-110 transition-transform">
-            <Clock size={64} color="orange" />
-          </div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Due Soon</CardTitle>
+        {/* Due Soon Card */}
+        <Card className="relative overflow-hidden border border-slate-200/60 shadow-sm bg-gradient-to-br from-white to-slate-50/50 premium-card-hover rounded-xl group">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/15 transition-all duration-300 pointer-events-none" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">Due Soon</CardTitle>
+            <div className="p-2 bg-amber-50 rounded-lg text-amber-600 shrink-0">
+              <Clock size={16} />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-9 w-16 mb-1" />
             ) : (
-              <div className="text-3xl font-bold text-slate-900">{dueSoonTasks}</div>
+              <div className="text-3xl font-bold text-slate-900 tracking-tight">{dueSoonTasks}</div>
             )}
-            <p className="text-xs text-muted-foreground mt-1">Due within 7 days</p>
+            <p className="text-xs text-muted-foreground mt-2 font-medium">Due in next 7 days</p>
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-white to-slate-50 group hover:shadow-md transition-all">
-          <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-1 group-hover:scale-110 transition-transform">
-            <CheckCircle2 size={64} color="green" />
-          </div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">Completed</CardTitle>
+        {/* Completed Card */}
+        <Card className="relative overflow-hidden border border-slate-200/60 shadow-sm bg-gradient-to-br from-white to-slate-50/50 premium-card-hover rounded-xl group">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-green-500/10 rounded-full blur-2xl group-hover:bg-green-500/15 transition-all duration-300 pointer-events-none" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">Completed</CardTitle>
+            <div className="p-2 bg-green-50 rounded-lg text-green-600 shrink-0">
+              <CheckCircle2 size={16} />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-9 w-16 mb-1" />
             ) : (
-              <div className="text-3xl font-bold text-slate-900">{completedTasks}</div>
+              <div className="text-3xl font-bold text-slate-900 tracking-tight">{completedTasks}</div>
             )}
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-              <TrendingUp className="h-3 w-3 text-green-600" />
-              Total accomplished
+            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+              <TrendingUp className="h-3 w-3 text-green-600 animate-bounce" />
+              <span className="font-semibold text-green-600">Total accomplished</span>
             </p>
           </CardContent>
         </Card>
 
+        {/* Team Size Card */}
         {hasPermission('members:read') && (
-          <Card className="relative overflow-hidden border-none shadow-sm bg-gradient-to-br from-white to-slate-50 group hover:shadow-md transition-all">
-            <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-1 group-hover:scale-110 transition-transform">
-              <Users size={64} color="blue" />
-            </div>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600">Team Size</CardTitle>
+          <Card className="relative overflow-hidden border border-slate-200/60 shadow-sm bg-gradient-to-br from-white to-slate-50/50 premium-card-hover rounded-xl group">
+            <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/15 transition-all duration-300 pointer-events-none" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">Team Size</CardTitle>
+              <div className="p-2 bg-blue-50 rounded-lg text-blue-600 shrink-0">
+                <Users size={16} />
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
                 <Skeleton className="h-9 w-16 mb-1" />
               ) : (
-                <div className="text-3xl font-bold text-slate-900">{members.length}</div>
+                <div className="text-3xl font-bold text-slate-900 tracking-tight">{members.length}</div>
               )}
-              <p className="text-xs text-muted-foreground mt-1">Active workspace members</p>
+              <p className="text-xs text-muted-foreground mt-2 font-medium">Active workspace members</p>
             </CardContent>
           </Card>
         )}

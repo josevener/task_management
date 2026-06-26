@@ -90,7 +90,7 @@ export default function EditWorkspaceMemberPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 flex flex-col w-full">
+    <div className="space-y-4 flex flex-col w-full">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild className="cursor-pointer">
           <Link href={`/workspaces/${id}/members`}>

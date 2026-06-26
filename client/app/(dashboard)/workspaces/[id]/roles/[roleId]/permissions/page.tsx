@@ -169,7 +169,7 @@ export default function RolePermissionsPage() {
 
       {/* Content Matrix */}
       <main className="flex-1 overflow-y-auto w-full py-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="w-full space-y-6">
           {role?.name === 'Admin' && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start gap-3">
               <ShieldAlert className="h-5 w-5 mt-0.5 shrink-0" />

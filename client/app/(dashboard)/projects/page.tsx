@@ -141,7 +141,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Projects</h1>
@@ -245,7 +245,7 @@ export default function ProjectsPage() {
             return (
               <Card
                 key={project.id}
-                className="flex flex-col hover:shadow-md transition-shadow cursor-pointer group"
+                className="flex flex-col rounded-xl border border-slate-200/80 hover:border-slate-350 shadow-sm cursor-pointer transition-all duration-200 premium-card-hover group"
                 onClick={() => router.push(`/projects/${project.id}`)}
               >
                 <CardHeader className="pb-3">

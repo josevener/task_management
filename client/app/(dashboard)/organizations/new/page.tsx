@@ -44,7 +44,7 @@ export default function NewOrganizationPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild>
           <Link href="/organizations">

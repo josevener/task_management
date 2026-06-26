@@ -91,7 +91,7 @@ export default function WorkspaceMembersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-7xl mx-auto">
+    <div className="flex flex-col gap-6 w-full">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
         <div>

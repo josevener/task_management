@@ -91,7 +91,7 @@ export default function ProjectDetailsPage() {
   if (!project) return null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-7xl mx-auto w-full">
+    <div className="flex flex-col h-[calc(100vh-7.5rem)] w-full">
       {/* Project Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 shrink-0">
         <div>

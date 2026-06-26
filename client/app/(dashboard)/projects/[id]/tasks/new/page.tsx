@@ -52,7 +52,7 @@ export default function CreateTaskPage() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild className="cursor-pointer">
           <Link href={`/projects/${projectId}`}>

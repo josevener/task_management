@@ -100,7 +100,7 @@ export default function GlobalCreateTaskPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 pb-12">
+    <div className="w-full space-y-6 pb-12">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" asChild className="cursor-pointer">
           <Link href="/dashboard">

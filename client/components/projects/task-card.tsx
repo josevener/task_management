@@ -50,7 +50,11 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
           }}
         >
           <Card
-            className={`shadow-sm border border-slate-200 cursor-pointer ${snapshot.isDragging ? 'shadow-lg ring-1 ring-blue-500' : 'hover:border-slate-300 hover:shadow-md'}`}
+            className={`rounded-xl border border-slate-200/80 cursor-pointer transition-all duration-200 premium-card-hover ${
+              snapshot.isDragging 
+                ? 'shadow-xl ring-2 ring-blue-500 bg-white border-blue-500 scale-[1.02]' 
+                : 'shadow-sm hover:border-slate-350 hover:shadow-md'
+            }`}
             onClick={onClick}
           >
             <CardContent className="p-3 space-y-3">

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar, CheckCircle2, ListTodo, Search, FilterX, RotateCcw, User, LayoutGrid, List } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/lib/toast";
+import { TaskItem } from "@/components/tasks/task-item";
 
 export default function WorkspaceTasksPage() {
   const { activeWorkspace } = useWorkspace();
@@ -279,7 +280,7 @@ export default function WorkspaceTasksPage() {
           </Button>
         </Card>
       ) : (
-        <div className={viewMode === 'list' ? "space-y-8" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-start"}>
+        <div className={viewMode === 'list' ? "space-y-8" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 min-[1700px]:grid-cols-6 gap-6 items-start"}>
           {getSortedGroupKeys().map(groupKey => (
             <div key={groupKey} className={viewMode === 'list' ? "space-y-4" : "space-y-4 flex flex-col h-full bg-slate-50/50 p-4 rounded-xl border border-slate-200/60"}>
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center justify-between">
@@ -288,63 +289,13 @@ export default function WorkspaceTasksPage() {
               </h3>
               <div className={viewMode === 'list' ? "grid gap-3" : "grid gap-4"}>
                 {groupedTasks[groupKey].map(task => (
-                  <div key={task.id} className={`relative group bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all flex ${viewMode === 'list' ? 'flex-col sm:flex-row sm:items-center' : 'flex-col'} gap-4`}>
-
-                    <div className="flex-shrink-0 pt-1 sm:pt-0">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${task.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 hover:border-blue-500 text-transparent hover:text-blue-500'}`}>
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem onClick={() => handleStatusChange(task.id, 'todo')}>To Do</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(task.id, 'in_progress')}>In Progress</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(task.id, 'review')}>Review</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(task.id, 'done')}>Done</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleStatusChange(task.id, 'cancelled')}>Cancelled</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Link href={`/projects/${task.project_id}`} className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors block truncate">
-                          {task.title}
-                        </Link>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-                        {groupBy !== 'project' && (
-                          <span className="flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded truncate max-w-[120px]">
-                            {task.project_name}
-                          </span>
-                        )}
-                        {task.priority && (
-                          <span className="flex items-center gap-1 uppercase tracking-wider text-[10px]">
-                            {getPriorityIcon(task.priority)} {task.priority}
-                          </span>
-                        )}
-                        {task.due_date && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5" />
-                            {new Date(task.due_date).toLocaleDateString()}
-                          </span>
-                        )}
-                        {task.assignee_first_name && (
-                          <span className="flex items-center gap-1 text-slate-600 font-medium">
-                            <User className="w-3.5 h-3.5" />
-                            {task.assignee_first_name}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className={`flex items-center gap-2 ${viewMode === 'list' ? 'sm:ml-auto' : 'mt-2 pt-2 border-t border-slate-100'}`}>
-                      <Badge variant="outline" className={`${getStatusColor(task.status || 'todo')} capitalize text-[10px]`}>
-                        {(task.status || 'todo').replace('_', ' ')}
-                      </Badge>
-                    </div>
-                  </div>
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    viewMode={viewMode}
+                    onStatusChange={handleStatusChange}
+                    showProjectName={groupBy !== 'project'}
+                  />
                 ))}
               </div>
             </div>

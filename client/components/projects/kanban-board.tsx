@@ -124,16 +124,16 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start">
+      <div className="flex h-full gap-6 overflow-x-auto pb-2.5 items-stretch">
         {COLUMNS.map((col) => {
           const tasks = boardData[col.id] || [];
 
           return (
-            <div key={col.id} className="flex-shrink-0 w-80 flex flex-col max-h-[calc(100vh-12rem)]">
+            <div key={col.id} className="flex-1 min-w-[280px] max-w-[420px] flex flex-col h-full max-h-full pb-2">
               {/* Column Header */}
-              <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center justify-between mb-3 px-1.5 shrink-0">
                 <h3 className="font-semibold text-sm text-slate-700">{col.title}</h3>
-                <span className="bg-slate-200 text-slate-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                <span className="bg-slate-200/80 text-slate-600 text-xs font-medium px-2.5 py-0.5 rounded-full">
                   {tasks.length}
                 </span>
               </div>
@@ -144,8 +144,11 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`flex-1 rounded-lg p-3 min-h-[150px] border ${col.bg} transition-colors ${snapshot.isDraggingOver ? "ring-2 ring-blue-400 ring-inset bg-slate-50 border-dashed" : ""
-                      }`}
+                    className={`flex-1 rounded-xl p-3 min-h-[150px] border ${col.bg} overflow-y-auto custom-scrollbar transition-all duration-200 ${
+                      snapshot.isDraggingOver
+                        ? "ring-2 ring-blue-400 ring-inset bg-blue-50/40 border-blue-200 border-dashed"
+                        : ""
+                    }`}
                   >
                     {tasks.map((task, index) => (
                       <TaskCard

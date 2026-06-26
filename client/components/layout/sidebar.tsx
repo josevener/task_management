@@ -94,8 +94,8 @@ export function Sidebar({ className, onNavigate, isCollapsed = false }: SidebarP
     if (!isCollapsed) return;
 
     // Check if we are moving to the popup
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    if (relatedTarget?.closest('[data-side-popup="true"]')) {
+    const relatedTarget = e.relatedTarget;
+    if (relatedTarget instanceof Element && relatedTarget.closest('[data-side-popup="true"]')) {
       return;
     }
 

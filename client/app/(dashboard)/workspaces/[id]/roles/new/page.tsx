@@ -59,7 +59,7 @@ export default function CreateRolePage() {
       </div>
 
       <main className="flex-1 overflow-y-auto w-full py-6">
-        <div className="max-w-7xl mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <div className="w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
           <RoleForm 
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/workspaces/${workspaceId}/roles`)}
