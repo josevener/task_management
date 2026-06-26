@@ -28,57 +28,55 @@ test('registration cleans up the pending user when email delivery fails', async 
   };
 
   const databaseMock = {
-    async query(sql, params = []) {
-      if (sql.includes('SELECT id FROM users WHERE email = ?')) {
-        return state.users.filter((user) => user.email === params[0]).map((user) => ({ id: user.id }));
+    prisma: {
+      user: {
+        async findFirst({ where }) {
+          const user = state.users.find((u) => u.email === where.email);
+          return user ? { id: user.id } : null;
+        }
+      },
+      async $transaction(callback) {
+        const tx = {
+          user: {
+            async create({ data }) {
+              const newUser = {
+                id: state.nextUserId++,
+                email: data.email,
+                isActive: false,
+                emailVerifiedAt: null,
+              };
+              state.users.push(newUser);
+              return newUser;
+            },
+            async findFirst({ where }) {
+              const user = state.users.find((u) => u.email === where.email && !u.isActive);
+              return user ? { id: user.id } : null;
+            },
+            async delete({ where }) {
+              state.users = state.users.filter((u) => u.id !== where.id);
+              return { id: where.id };
+            }
+          },
+          emailVerificationToken: {
+            async create({ data }) {
+              const token = { email: data.email, token: data.token };
+              state.tokens.push(token);
+              return token;
+            },
+            async deleteMany({ where }) {
+              state.tokens = state.tokens.filter((t) => t.email !== where.email);
+              return { count: 1 };
+            }
+          },
+          workspaceMember: {
+            async findFirst() {
+              return null;
+            }
+          }
+        };
+        return callback(tx);
       }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction(callback) {
-      const connection = {
-        async execute(sql, params = []) {
-          if (sql.includes('INSERT INTO users')) {
-            state.users.push({
-              id: state.nextUserId,
-              email: params[0],
-              is_active: false,
-              email_verified_at: null,
-            });
-
-            return [{ insertId: state.nextUserId++ }];
-          }
-
-          if (sql.includes('INSERT INTO email_verification_tokens')) {
-            state.tokens.push({ email: params[0], token: params[1] });
-            return [{ insertId: state.tokens.length }];
-          }
-
-          if (sql.includes('FROM users') && sql.includes('is_active = FALSE')) {
-            const pendingUser = state.users.find((user) => user.email === params[0] && !user.is_active);
-            return [[pendingUser ? { id: pendingUser.id } : undefined].filter(Boolean)];
-          }
-
-          if (sql.includes('FROM workspace_members')) {
-            return [[]];
-          }
-
-          if (sql.includes('DELETE FROM email_verification_tokens')) {
-            state.tokens = state.tokens.filter((token) => token.email !== params[0]);
-            return [{ affectedRows: 1 }];
-          }
-
-          if (sql.includes('DELETE FROM users WHERE id = ?')) {
-            state.users = state.users.filter((user) => user.id !== params[0]);
-            return [{ affectedRows: 1 }];
-          }
-
-          throw new Error(`Unexpected execute: ${sql}`);
-        },
-      };
-
-      return callback(connection);
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/auth.routes.js', 'authRouter', {

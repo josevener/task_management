@@ -2,45 +2,50 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-const { query, withTransaction } = require('../config/database');
+const { prisma } = require('../config/database');
 const { env } = require('../config/env');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
 const { sendMail } = require('../utils/mailer');
+const { createRoleWithPermissions } = require('../utils/rbac');
 
 const authRouter = express.Router();
 
 authRouter.use(attachCurrentUser);
 
 async function cleanupPendingRegistration(email) {
-  await withTransaction(async (connection) => {
-    const [userRows] = await connection.execute(`
-      SELECT id
-      FROM users
-      WHERE email = ? AND is_active = FALSE AND email_verified_at IS NULL
-      LIMIT 1
-    `, [email]);
+  await prisma.$transaction(async (tx) => {
+    const pendingUser = await tx.user.findFirst({
+      where: {
+        email,
+        isActive: false,
+        emailVerifiedAt: null
+      },
+      select: { id: true }
+    });
 
-    const pendingUser = userRows[0];
     if (!pendingUser) {
       return;
     }
 
-    const [membershipRows] = await connection.execute(`
-      SELECT id
-      FROM workspace_members
-      WHERE user_id = ?
-      LIMIT 1
-    `, [pendingUser.id]);
+    const membership = await tx.workspaceMember.findFirst({
+      where: { userId: pendingUser.id },
+      select: { id: true }
+    });
 
-    if (membershipRows[0]) {
+    if (membership) {
       return;
     }
 
-    await connection.execute('DELETE FROM email_verification_tokens WHERE email = ?', [email]);
-    await connection.execute('DELETE FROM users WHERE id = ?', [pendingUser.id]);
+    await tx.emailVerificationToken.deleteMany({
+      where: { email }
+    });
+
+    await tx.user.delete({
+      where: { id: pendingUser.id }
+    });
   });
 }
 
@@ -51,8 +56,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 
   if (!email) {
     errors.email = 'Email is required';
-  }
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
   }
 
@@ -64,18 +68,15 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const rows = await query(`
-    SELECT id, email, password_hash, first_name, last_name, avatar_url, created_at, is_active
-    FROM users
-    WHERE email = ?
-  `, [email]);
+  const user = await prisma.user.findFirst({
+    where: { email }
+  });
 
-  const user = rows[0];
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     return sendError(res, 'Invalid email or password', 401);
   }
 
-  if (!user.is_active) {
+  if (!user.isActive) {
     return sendError(res, 'Your email address is not verified. Please check your email for the verification code.', 403, {
       needs_verification: true,
       email: user.email
@@ -89,10 +90,10 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     user: {
       id: user.id,
       email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      avatar_url: user.avatar_url,
-      created_at: user.created_at,
+      first_name: user.firstName,
+      last_name: user.lastName,
+      avatar_url: user.avatarUrl,
+      created_at: user.createdAt,
     },
     message: 'Login successful',
   });
@@ -107,15 +108,13 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 
   if (!email) {
     errors.email = 'Email is required';
-  }
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
   }
 
   if (!password) {
     errors.password = 'Password is required';
-  }
-  else if (password.length < 8) {
+  } else if (password.length < 8) {
     errors.password = 'Password must be at least 8 characters long';
   }
 
@@ -131,8 +130,12 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const existing = await query('SELECT id FROM users WHERE email = ?', [email]);
-  if (existing.length > 0) {
+  const existing = await prisma.user.findFirst({
+    where: { email },
+    select: { id: true }
+  });
+
+  if (existing) {
     return sendValidationError(res, { email: 'Email already registered' });
   }
 
@@ -141,19 +144,26 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 24);
 
-  await withTransaction(async (connection) => {
-    await connection.execute(`
-      INSERT INTO users (email, password_hash, first_name, last_name, is_active)
-      VALUES (?, ?, ?, ?, FALSE)
-    `, [email, password_hash, first_name, last_name]);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.create({
+      data: {
+        email,
+        passwordHash: password_hash,
+        firstName: first_name,
+        lastName: last_name,
+        isActive: false
+      }
+    });
 
-    await connection.execute(`
-      INSERT INTO email_verification_tokens (email, token, expires_at)
-      VALUES (?, ?, ?)
-    `, [email, token, expiresAt]);
+    await tx.emailVerificationToken.create({
+      data: {
+        email,
+        token,
+        expiresAt
+      }
+    });
   });
 
-  // Send Verification Link via email
   const verifyLink = `${env.appOrigin}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
   const htmlContent = `
@@ -176,8 +186,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
       subject: 'Zentrix - Verify Your Email',
       html: htmlContent,
     });
-  }
-  catch (error) {
+  } catch (error) {
     await cleanupPendingRegistration(email);
     throw error;
   }
@@ -199,19 +208,21 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
     });
   }
 
-  // 1. Check if the token is valid and not expired
-  const tokenRows = await query(`
-    SELECT * FROM email_verification_tokens 
-    WHERE email = ? AND token = ? AND expires_at > NOW()
-  `, [email, token]);
+  const tokenRecord = await prisma.emailVerificationToken.findFirst({
+    where: {
+      email,
+      token,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
 
-  if (tokenRows.length === 0) {
+  if (!tokenRecord) {
     return sendError(res, 'Invalid or expired verification link', 400);
   }
 
-  const user = await withTransaction(async (connection) => {
-    // 2. Activate user and set verification timestamp.
-    // If a password is provided, update it as well.
+  const user = await prisma.$transaction(async (tx) => {
     const password = String(req.body.password || '').trim();
     if (password) {
       if (password.length < 8) {
@@ -223,77 +234,75 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
 
       const passwordHash = await bcrypt.hash(password, 10);
 
-      await connection.execute(`
-        UPDATE users 
-        SET is_active = TRUE, email_verified_at = NOW(), password_hash = ?
-        WHERE email = ?
-      `, [passwordHash, email]);
+      await tx.user.update({
+        where: { email },
+        data: {
+          isActive: true,
+          emailVerifiedAt: new Date(),
+          passwordHash
+        }
+      });
+    } else {
+      await tx.user.update({
+        where: { email },
+        data: {
+          isActive: true,
+          emailVerifiedAt: new Date()
+        }
+      });
     }
-    else {
-      await connection.execute(`
-        UPDATE users 
-        SET is_active = TRUE, email_verified_at = NOW() 
-        WHERE email = ?
-      `, [email]);
-    }
 
-    // 3. Delete the used token
-    await connection.execute('DELETE FROM email_verification_tokens WHERE email = ?', [email]);
+    await tx.emailVerificationToken.deleteMany({
+      where: { email }
+    });
 
-    // 4. Fetch the user details
-    const [userRows] = await connection.execute(`
-      SELECT id, email, first_name, last_name, avatar_url, created_at
-      FROM users
-      WHERE email = ?
-    `, [email]);
+    const activeUser = await tx.user.findUnique({
+      where: { email }
+    });
 
-    const activeUser = userRows[0];
+    const memberCheck = await tx.workspaceMember.findFirst({
+      where: { userId: activeUser.id },
+      select: { id: true }
+    });
 
-    // 5. Provision environment if first time
-    const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
+    if (!memberCheck) {
+      const orgName = `${activeUser.firstName}'s Team`;
+      const orgSlug = createSlug(`${activeUser.firstName}-team-${Date.now()}`);
 
-    if (memberCheck.length === 0) {
-      // PROVISION DEFAULT ENVIRONMENT
-      const orgName = `${activeUser.first_name}'s Team`;
-      const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
-
-      const [orgResult] = await connection.execute(`
-        INSERT INTO organizations (name, slug, subscription_tier)
-        VALUES (?, ?, 'free')
-      `, [orgName, orgSlug]);
-
-      const orgId = orgResult.insertId;
+      const org = await tx.organization.create({
+        data: {
+          name: orgName,
+          slug: orgSlug,
+          subscriptionTier: 'free'
+        }
+      });
 
       const wsName = 'General Workspace';
       const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
 
-      const [wsResult] = await connection.execute(`
-        INSERT INTO workspaces (organization_id, name, slug)
-        VALUES (?, ?, ?)
-      `, [orgId, wsName, wsSlug]);
+      const ws = await tx.workspace.create({
+        data: {
+          organizationId: org.id,
+          name: wsName,
+          slug: wsSlug
+        }
+      });
 
-      const wsId = wsResult.insertId;
+      const role = await createRoleWithPermissions(tx, {
+        workspaceId: ws.id,
+        name: 'Admin',
+        description: 'Full administrative access',
+        isSystemRole: false
+      });
 
-      const [roleResult] = await connection.execute(`
-        INSERT INTO roles (workspace_id, name, description, is_system_role)
-        VALUES (?, 'Admin', 'Full administrative access', 0)
-      `, [wsId]);
-
-      const roleId = roleResult.insertId;
-
-      const [allPermissions] = await connection.execute('SELECT id FROM permissions');
-      if (allPermissions.length > 0) {
-        const values = allPermissions.map(p => `(${roleId}, ${p.id})`).join(', ');
-        await connection.execute(`
-          INSERT INTO role_permissions (role_id, permission_id)
-          VALUES ${values}
-        `);
-      }
-
-      await connection.execute(`
-        INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
-        VALUES (?, ?, ?, 'Admin')
-      `, [wsId, activeUser.id, roleId]);
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: ws.id,
+          userId: activeUser.id,
+          roleId: role.id,
+          role: 'Admin'
+        }
+      });
     }
 
     return activeUser;
@@ -303,7 +312,14 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
   req.session.user_email = user.email;
 
   return sendSuccess(res, {
-    user,
+    user: {
+      id: user.id,
+      email: user.email,
+      first_name: user.firstName,
+      last_name: user.lastName,
+      avatar_url: user.avatarUrl,
+      created_at: user.createdAt,
+    },
     message: 'Email verified successfully. Welcome to Zentrix!',
   });
 }));
@@ -316,12 +332,17 @@ authRouter.get('/check-token', asyncHandler(async (req, res) => {
     return sendError(res, 'Missing email or token', 400);
   }
 
-  const tokenRows = await query(`
-    SELECT * FROM email_verification_tokens 
-    WHERE email = ? AND token = ? AND expires_at > NOW()
-  `, [email, token]);
+  const tokenRecord = await prisma.emailVerificationToken.findFirst({
+    where: {
+      email,
+      token,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
 
-  if (tokenRows.length === 0) {
+  if (!tokenRecord) {
     return sendError(res, 'Invalid or expired verification link', 400);
   }
 
@@ -339,98 +360,97 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
     });
   }
 
-  // 1. Check if the OTP is valid and not expired
-  const otpRows = await query(`
-    SELECT * FROM email_otp_verifications 
-    WHERE email = ? AND otp_code = ? AND expires_at > NOW()
-  `, [email, otpCode]);
+  const otpRecord = await prisma.emailOtpVerification.findFirst({
+    where: {
+      email,
+      otpCode,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
 
-  if (otpRows.length === 0) {
+  if (!otpRecord) {
     return sendError(res, 'Invalid or expired verification code', 400);
   }
 
-  const user = await withTransaction(async (connection) => {
-    // 2. Activate user and set verification timestamp
-    await connection.execute(`
-      UPDATE users 
-      SET is_active = TRUE, email_verified_at = NOW() 
-      WHERE email = ?
-    `, [email]);
+  const user = await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { email },
+      data: {
+        isActive: true,
+        emailVerifiedAt: new Date()
+      }
+    });
 
-    // 3. Delete the used OTP
-    await connection.execute('DELETE FROM email_otp_verifications WHERE email = ?', [email]);
+    await tx.emailOtpVerification.deleteMany({
+      where: { email }
+    });
 
-    // 4. Fetch the user details
-    const [userRows] = await connection.execute(`
-      SELECT id, email, first_name, last_name, avatar_url, created_at
-      FROM users
-      WHERE email = ?
-    `, [email]);
+    const activeUser = await tx.user.findUnique({
+      where: { email }
+    });
 
-    const activeUser = userRows[0];
+    const memberCheck = await tx.workspaceMember.findFirst({
+      where: { userId: activeUser.id },
+      select: { id: true }
+    });
 
-    // 5. Check if user already has an organization (to avoid duplicate processing on retry)
-    const [memberCheck] = await connection.execute('SELECT id FROM workspace_members WHERE user_id = ? LIMIT 1', [activeUser.id]);
+    if (!memberCheck) {
+      const orgName = `${activeUser.firstName}'s Team`;
+      const orgSlug = createSlug(`${activeUser.firstName}-team-${Date.now()}`);
 
-    if (memberCheck.length === 0) {
-      // PROVISION DEFAULT ENVIRONMENT
+      const org = await tx.organization.create({
+        data: {
+          name: orgName,
+          slug: orgSlug,
+          subscriptionTier: 'free'
+        }
+      });
 
-      // Create Default Organization
-      const orgName = `${activeUser.first_name}'s Team`;
-      const orgSlug = createSlug(`${activeUser.first_name}-team-${Date.now()}`);
-
-      const [orgResult] = await connection.execute(`
-        INSERT INTO organizations (name, slug, subscription_tier)
-        VALUES (?, ?, 'free')
-      `, [orgName, orgSlug]);
-
-      const orgId = orgResult.insertId;
-
-      // Create Default Workspace
       const wsName = 'General Workspace';
       const wsSlug = 'general-' + Math.random().toString(36).substring(2, 7);
 
-      const [wsResult] = await connection.execute(`
-        INSERT INTO workspaces (organization_id, name, slug)
-        VALUES (?, ?, ?)
-      `, [orgId, wsName, wsSlug]);
+      const ws = await tx.workspace.create({
+        data: {
+          organizationId: org.id,
+          name: wsName,
+          slug: wsSlug
+        }
+      });
 
-      const wsId = wsResult.insertId;
+      const role = await createRoleWithPermissions(tx, {
+        workspaceId: ws.id,
+        name: 'Admin',
+        description: 'Full administrative access',
+        isSystemRole: false
+      });
 
-      // Create Admin Role for this Workspace
-      const [roleResult] = await connection.execute(`
-        INSERT INTO roles (workspace_id, name, description, is_system_role)
-        VALUES (?, 'Admin', 'Full administrative access', 0)
-      `, [wsId]);
-
-      const roleId = roleResult.insertId;
-
-      // Map all existing permissions to this role
-      const [allPermissions] = await connection.execute('SELECT id FROM permissions');
-      if (allPermissions.length > 0) {
-        const values = allPermissions.map(p => `(${roleId}, ${p.id})`).join(', ');
-        await connection.execute(`
-          INSERT INTO role_permissions (role_id, permission_id)
-          VALUES ${values}
-        `);
-      }
-
-      // Add user as the workspace member (admin)
-      await connection.execute(`
-        INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
-        VALUES (?, ?, ?, 'Admin')
-      `, [wsId, activeUser.id, roleId]);
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: ws.id,
+          userId: activeUser.id,
+          roleId: role.id,
+          role: 'Admin'
+        }
+      });
     }
 
     return activeUser;
   });
 
-  // Log the user in (set session)
   req.session.user_id = user.id;
   req.session.user_email = user.email;
 
   return sendSuccess(res, {
-    user,
+    user: {
+      id: user.id,
+      email: user.email,
+      first_name: user.firstName,
+      last_name: user.lastName,
+      avatar_url: user.avatarUrl,
+      created_at: user.createdAt,
+    },
     message: 'Email verified successfully. Your workspace has been set up.',
   });
 }));
@@ -442,33 +462,39 @@ authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
     return sendValidationError(res, { email: 'Email is required' });
   }
 
-  // Check if user exists and is not already active
-  const userRows = await query('SELECT first_name, is_active FROM users WHERE email = ?', [email]);
-  if (userRows.length === 0) {
+  const user = await prisma.user.findFirst({
+    where: { email },
+    select: { firstName: true, isActive: true }
+  });
+
+  if (!user) {
     return sendError(res, 'User not found', 404);
   }
 
-  if (userRows[0].is_active) {
+  if (user.isActive) {
     return sendError(res, 'Email is already verified', 400);
   }
 
-  // Delete any existing OTPs for this email
-  await query('DELETE FROM email_otp_verifications WHERE email = ?', [email]);
+  await prisma.emailOtpVerification.deleteMany({
+    where: { email }
+  });
 
-  // Generate new 6-digit OTP
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 10);
 
-  await query(`
-    INSERT INTO email_otp_verifications (email, otp_code, expires_at)
-    VALUES (?, ?, ?)
-  `, [email, otpCode, expiresAt]);
+  await prisma.emailOtpVerification.create({
+    data: {
+      email,
+      otpCode,
+      expiresAt
+    }
+  });
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #4f46e5;">New Verification Code</h2>
-      <p>Hi ${userRows[0].first_name},</p>
+      <p>Hi ${user.firstName},</p>
       <p>You requested a new verification code. Please use the following code to activate your Zentrix account:</p>
       <div style="text-align: center; margin: 30px 0;">
         <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
@@ -503,40 +529,41 @@ authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
     return sendValidationError(res, { email: 'Email is required' });
   }
 
-  // 1. Check if user exists
-  const users = await query('SELECT id, first_name FROM users WHERE email = ? AND is_active = TRUE', [email]);
+  const user = await prisma.user.findFirst({
+    where: {
+      email,
+      isActive: true
+    },
+    select: { id: true, firstName: true }
+  });
 
-  // We ALWAYS return success here to prevent email enumeration,
-  // but we ONLY send the email if the user exists.
-  if (users.length === 0) {
+  if (!user) {
     return sendSuccess(res, { message: 'If that email exists, a reset link has been sent.' });
   }
 
-  const user = users[0];
+  await prisma.passwordReset.deleteMany({
+    where: { email }
+  });
 
-  // 2. Clear any existing reset tokens for this email to prevent spam/confusion
-  await query('DELETE FROM password_resets WHERE email = ?', [email]);
-
-  // 3. Generate a secure random token
   const token = crypto.randomBytes(32).toString('hex');
 
-  // 4. Set expiration time (1 hour from now)
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 1);
 
-  // 5. Store the token in the database
-  await query(`
-    INSERT INTO password_resets (email, token, expires_at)
-    VALUES (?, ?, ?)
-  `, [email, token, expiresAt]);
+  await prisma.passwordReset.create({
+    data: {
+      email,
+      token,
+      expiresAt
+    }
+  });
 
-  // 6. Send the email via Hostinger
   const resetLink = `${env.appOrigin}/reset-password?token=${token}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #4f46e5;">Password Reset Request</h2>
-      <p>Hi ${user.first_name},</p>
+      <p>Hi ${user.firstName},</p>
       <p>We received a request to reset your password for your Zentrix account. If you didn't request this, you can safely ignore this email.</p>
       <p>To reset your password, click the button below:</p>
       <div style="text-align: center; margin: 30px 0;">
@@ -568,8 +595,7 @@ authRouter.post('/reset-password', asyncHandler(async (req, res) => {
 
   if (!newPassword) {
     errors.password = 'New password is required';
-  }
-  else if (newPassword.length < 8) {
+  } else if (newPassword.length < 8) {
     errors.password = 'Password must be at least 8 characters long';
   }
 
@@ -577,30 +603,40 @@ authRouter.post('/reset-password', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  // 1. Verify token exists and hasn't expired
-  const resetRows = await query(`
-    SELECT email FROM password_resets 
-    WHERE token = ? AND expires_at > NOW()
-  `, [token]);
+  const resetRecord = await prisma.passwordReset.findFirst({
+    where: {
+      token,
+      expiresAt: {
+        gt: new Date()
+      }
+    }
+  });
 
-  if (resetRows.length === 0) {
+  if (!resetRecord) {
     return sendError(res, 'This password reset link is invalid or has expired. Please request a new one.', 400);
   }
 
-  const email = resetRows[0].email;
-
-  // 2. Hash the new password
+  const email = resetRecord.email;
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
-  // 3. Update the user's password
-  await query(`
-    UPDATE users SET password_hash = ? WHERE email = ?
-  `, [passwordHash, email]);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { email },
+      data: { passwordHash }
+    });
 
-  // 4. Delete the used token (and any other expired tokens for good hygiene)
-  await query('DELETE FROM password_resets WHERE email = ?', [email]);
-  // Also clean up any other expired tokens in the system
-  await query('DELETE FROM password_resets WHERE expires_at <= NOW()');
+    await tx.passwordReset.deleteMany({
+      where: { email }
+    });
+
+    await tx.passwordReset.deleteMany({
+      where: {
+        expiresAt: {
+          lte: new Date()
+        }
+      }
+    });
+  });
 
   return sendSuccess(res, { message: 'Password has been successfully reset.' });
 }));

@@ -1,86 +1,135 @@
 const express = require('express');
-
-const { query, withTransaction } = require('../config/database');
+const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
-const { buildUpdateClause, isValidDate } = require('../utils/validation');
+const { isValidDate } = require('../utils/validation');
 
 const projectsRouter = express.Router();
 
 projectsRouter.use(attachCurrentUser, requireAuth);
 
+function mapProject(p) {
+  if (!p) return null;
+  const total_tasks = p.tasks ? p.tasks.length : 0;
+  const completed_tasks = p.tasks ? p.tasks.filter(t => t.status === 'done').length : 0;
+  const progress_percentage = total_tasks > 0 ? Math.round((completed_tasks * 100) / total_tasks) : 0;
+
+  return {
+    id: p.id,
+    workspace_id: p.workspaceId,
+    name: p.name,
+    description: p.description,
+    status: p.status,
+    owner_id: p.ownerId,
+    start_date: p.startDate,
+    end_date: p.endDate,
+    health_status: p.healthStatus,
+    is_template: p.isTemplate,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+    owner_first_name: p.owner?.firstName || null,
+    owner_last_name: p.owner?.lastName || null,
+    owner_email: p.owner?.email || null,
+    workspace_name: p.workspace?.name || undefined,
+    total_tasks,
+    completed_tasks,
+    progress_percentage,
+  };
+}
+
 projectsRouter.get('/', asyncHandler(async (req, res) => {
   if (req.query.workspace_id) {
-    const accessRows = await query(`
-      SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-    `, [req.query.workspace_id, req.currentUser.id]);
+    const workspaceMember = await prisma.workspaceMember.findFirst({
+      where: {
+        workspaceId: parseInt(req.query.workspace_id, 10),
+        userId: req.currentUser.id,
+      },
+      select: { role: true }
+    });
 
-    if (!accessRows[0]) {
+    if (!workspaceMember) {
       return sendError(res, 'Workspace access denied', 403);
     }
 
-    const projects = await query(`
-      SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-             p.owner_id, p.start_date, p.end_date,
-             p.health_status, p.is_template, p.created_at, p.updated_at,
-             u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-             u.email AS owner_email,
-             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
-             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
-             ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
-      FROM projects p
-      LEFT JOIN users u ON u.id = p.owner_id
-      WHERE p.workspace_id = ?
-      ORDER BY p.created_at DESC
-    `, [req.query.workspace_id]);
+    const projects = await prisma.project.findMany({
+      where: {
+        workspaceId: parseInt(req.query.workspace_id, 10),
+      },
+      include: {
+        owner: true,
+        tasks: {
+          select: {
+            id: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc',
+      }
+    });
 
-    return sendSuccess(res, { projects });
+    return sendSuccess(res, { projects: projects.map(mapProject) });
   }
 
-  const projects = await query(`
-    SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-           p.owner_id, p.start_date, p.end_date,
-           p.health_status, p.is_template, p.created_at, p.updated_at,
-           u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-           u.email AS owner_email, w.name AS workspace_name,
-           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
-           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
-           ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
-    FROM projects p
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    LEFT JOIN users u ON u.id = p.owner_id
-    WHERE wm.user_id = ?
-    ORDER BY p.created_at DESC
-  `, [req.currentUser.id]);
+  const projects = await prisma.project.findMany({
+    where: {
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id,
+          }
+        }
+      }
+    },
+    include: {
+      owner: true,
+      workspace: true,
+      tasks: {
+        select: {
+          id: true,
+          status: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: 'desc',
+    }
+  });
 
-  return sendSuccess(res, { projects });
+  return sendSuccess(res, { projects: projects.map(mapProject) });
 }));
 
 projectsRouter.get('/:id', asyncHandler(async (req, res) => {
-  const rows = await query(`
-    SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-           p.owner_id, p.start_date, p.end_date,
-           p.health_status, p.is_template, p.created_at, p.updated_at,
-           u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-           u.email AS owner_email, w.name AS workspace_name,
-           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
-           (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') as completed_tasks,
-           ROUND(COALESCE((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'done') * 100.0 / NULLIF((SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id), 0), 0)) as progress_percentage
-    FROM projects p
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    LEFT JOIN users u ON u.id = p.owner_id
-    WHERE p.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const project = await prisma.project.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    },
+    include: {
+      owner: true,
+      workspace: true,
+      tasks: {
+        select: {
+          id: true,
+          status: true
+        }
+      }
+    }
+  });
 
-  if (!rows[0]) {
+  if (!project) {
     return sendError(res, 'Project not found or access denied', 404);
   }
 
-  return sendSuccess(res, { project: rows[0] });
+  return sendSuccess(res, { project: mapProject(project) });
 }));
 
 projectsRouter.post('/', asyncHandler(async (req, res) => {
@@ -96,29 +145,42 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
   if (!workspace_id) {
     errors.workspace_id = 'Workspace ID is required';
   }
+
   if (!name) {
     errors.name = 'Project name is required';
-  } else if (name.length > 255) {
+  } 
+  else if (name.length > 255) {
     errors.name = 'Project name must be 255 characters or less';
   }
+
   if (!['active', 'on_hold', 'completed', 'archived'].includes(status)) {
     errors.status = 'Invalid status. Must be one of: active, on_hold, completed, archived';
   }
+
   if (!isValidDate(start_date)) {
     errors.start_date = 'Invalid start date format';
   }
+
   if (!isValidDate(end_date)) {
     errors.end_date = 'Invalid end date format';
   }
+
   if (start_date && end_date && Date.parse(start_date) > Date.parse(end_date)) {
     errors.end_date = 'End date must be after start date';
   }
 
   if (workspace_id) {
-    const isMember = await query('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?', [workspace_id, req.currentUser.id]);
-    if (!isMember[0]) {
+    const isMember = await prisma.workspaceMember.findFirst({
+      where: {
+        workspaceId: parseInt(workspace_id, 10),
+        userId: req.currentUser.id
+      },
+      select: { id: true }
+    });
+    if (!isMember) {
       errors.workspace_id = 'Workspace access denied';
-    } else {
+    } 
+    else {
       const canCreate = await checkPermission(workspace_id, req.currentUser.id, 'projects:create');
       if (!canCreate) {
         errors.workspace_id = 'You do not have permission to create projects';
@@ -130,65 +192,82 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const project = await withTransaction(async (connection) => {
-    const [projectResult] = await connection.execute(`
-      INSERT INTO projects (workspace_id, name, description, status, owner_id, start_date, end_date, is_template)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      workspace_id,
-      name,
-      description || null,
-      status,
-      req.currentUser.id,
-      start_date || null,
-      end_date || null,
-      is_template ? 1 : 0,
-    ]);
+  const project = await prisma.$transaction(async (tx) => {
+    const newProject = await tx.project.create({
+      data: {
+        workspaceId: parseInt(workspace_id, 10),
+        name,
+        description: description || null,
+        status,
+        ownerId: req.currentUser.id,
+        startDate: start_date ? new Date(start_date) : null,
+        endDate: end_date ? new Date(end_date) : null,
+        isTemplate: is_template
+      }
+    });
 
-    await connection.execute(`
-      INSERT INTO project_members (project_id, user_id, role)
-      VALUES (?, ?, 'owner')
-    `, [projectResult.insertId, req.currentUser.id]);
+    await tx.projectMember.create({
+      data: {
+        projectId: newProject.id,
+        userId: req.currentUser.id,
+        role: 'owner'
+      }
+    });
 
-    await connection.execute(`
-      INSERT INTO activity_logs (user_id, workspace_id, project_id, activity_type, description)
-      VALUES (?, ?, ?, 'project_created', ?)
-    `, [req.currentUser.id, workspace_id, projectResult.insertId, `Project '${name}' was created`]);
+    await tx.activityLog.create({
+      data: {
+        userId: req.currentUser.id,
+        workspaceId: parseInt(workspace_id, 10),
+        projectId: newProject.id,
+        activityType: 'project_created',
+        description: `Project '${name}' was created`
+      }
+    });
 
-    const [rows] = await connection.execute(`
-      SELECT p.id, p.workspace_id, p.name, p.description, p.status,
-             p.owner_id, p.start_date, p.end_date, p.progress_percentage,
-             p.health_status, p.is_template, p.created_at, p.updated_at,
-             u.first_name AS owner_first_name, u.last_name AS owner_last_name,
-             u.email AS owner_email
-      FROM projects p
-      LEFT JOIN users u ON u.id = p.owner_id
-      WHERE p.id = ?
-    `, [projectResult.insertId]);
+    const projectWithRelations = await tx.project.findUnique({
+      where: { id: newProject.id },
+      include: {
+        owner: true
+      }
+    });
 
-    return rows[0];
+    return mapProject(projectWithRelations);
   });
 
   return sendSuccess(res, { project }, 201);
 }));
 
 projectsRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const rows = await query(`
-    SELECT p.id, p.workspace_id, pm.role AS project_role
-    FROM projects p
-    INNER JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?
-    LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-    WHERE p.id = ?
-    LIMIT 1
-  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
+  const existingProject = await prisma.project.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    },
+    include: {
+      members: {
+        where: {
+          userId: req.currentUser.id
+        },
+        select: {
+          role: true
+        }
+      }
+    }
+  });
 
-  const existingProject = rows[0];
   if (!existingProject) {
     return sendError(res, 'Project not found', 404);
   }
 
-  const canEditWorkspace = await checkPermission(existingProject.workspace_id, req.currentUser.id, 'projects:edit');
-  const canEdit = existingProject.project_role === 'owner' || canEditWorkspace;
+  const project_role = existingProject.members[0]?.role || null;
+  const canEditWorkspace = await checkPermission(existingProject.workspaceId, req.currentUser.id, 'projects:edit');
+  const canEdit = project_role === 'owner' || canEditWorkspace;
   if (!canEdit) {
     return sendError(res, 'You do not have permission to edit this project', 403);
   }
@@ -196,88 +275,162 @@ projectsRouter.patch('/:id', asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'name') && !String(req.body.name || '').trim()) {
     return sendValidationError(res, { name: 'Project name cannot be empty' });
   }
+
   if (Object.prototype.hasOwnProperty.call(req.body, 'status') && !['active', 'on_hold', 'completed', 'archived'].includes(req.body.status)) {
     return sendValidationError(res, { status: 'Invalid status' });
   }
+  
   if (Object.prototype.hasOwnProperty.call(req.body, 'health_status') && !['on_track', 'at_risk', 'off_track', 'not_set'].includes(req.body.health_status)) {
     return sendValidationError(res, { health_status: 'Invalid health status' });
   }
 
-  const { updates, params } = buildUpdateClause(req.body, ['name', 'description', 'status', 'start_date', 'end_date', 'progress_percentage', 'health_status']);
-  if (updates.length === 0) {
+  const updateData = {};
+  if (Object.prototype.hasOwnProperty.call(req.body, 'name')) updateData.name = String(req.body.name || '').trim();
+  if (Object.prototype.hasOwnProperty.call(req.body, 'description')) updateData.description = req.body.description || null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'status')) updateData.status = req.body.status;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'start_date')) updateData.startDate = req.body.start_date ? new Date(req.body.start_date) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'end_date')) updateData.endDate = req.body.end_date ? new Date(req.body.end_date) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'progress_percentage')) updateData.progressPercentage = parseInt(req.body.progress_percentage, 10);
+  if (Object.prototype.hasOwnProperty.call(req.body, 'health_status')) updateData.healthStatus = req.body.health_status;
+
+  if (Object.keys(updateData).length === 0) {
     return sendError(res, 'No fields to update', 400);
   }
 
-  await withTransaction(async (connection) => {
-    await connection.execute(`
-      UPDATE projects
-      SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [...params, req.params.id]);
+  await prisma.$transaction(async (tx) => {
+    await tx.project.update({
+      where: { id: parseInt(req.params.id, 10) },
+      data: updateData
+    });
 
-    await connection.execute(`
-      INSERT INTO activity_logs (user_id, workspace_id, project_id, activity_type, description)
-      VALUES (?, ?, ?, 'project_updated', 'Project details were updated')
-    `, [req.currentUser.id, existingProject.workspace_id, req.params.id]);
+    await tx.activityLog.create({
+      data: {
+        userId: req.currentUser.id,
+        workspaceId: existingProject.workspaceId,
+        projectId: parseInt(req.params.id, 10),
+        activityType: 'project_updated',
+        description: 'Project details were updated'
+      }
+    });
   });
 
-  const projectRows = await query('SELECT * FROM projects WHERE id = ?', [req.params.id]);
-  return sendSuccess(res, { project: projectRows[0] });
+  const updatedProject = await prisma.project.findUnique({
+    where: { id: parseInt(req.params.id, 10) }
+  });
+
+  return sendSuccess(res, {
+    project: {
+      id: updatedProject.id,
+      workspace_id: updatedProject.workspaceId,
+      name: updatedProject.name,
+      description: updatedProject.description,
+      status: updatedProject.status,
+      owner_id: updatedProject.ownerId,
+      start_date: updatedProject.startDate,
+      end_date: updatedProject.endDate,
+      progress_percentage: updatedProject.progressPercentage,
+      health_status: updatedProject.healthStatus,
+      is_template: updatedProject.isTemplate,
+      created_at: updatedProject.createdAt,
+      updated_at: updatedProject.updatedAt
+    }
+  });
 }));
 
 projectsRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const rows = await query(`
-    SELECT p.id, p.workspace_id, pm.role AS project_role
-    FROM projects p
-    INNER JOIN workspace_members wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?
-    LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-    WHERE p.id = ?
-    LIMIT 1
-  `, [req.currentUser.id, req.currentUser.id, req.params.id]);
+  const existingProject = await prisma.project.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    },
+    include: {
+      members: {
+        where: {
+          userId: req.currentUser.id
+        },
+        select: {
+          role: true
+        }
+      }
+    }
+  });
 
-  const existingProject = rows[0];
   if (!existingProject) {
     return sendError(res, 'Project not found', 404);
   }
 
-  const canDeleteWorkspace = await checkPermission(existingProject.workspace_id, req.currentUser.id, 'projects:delete');
-  const canDelete = existingProject.project_role === 'owner' || canDeleteWorkspace;
+  const project_role = existingProject.members[0]?.role || null;
+  const canDeleteWorkspace = await checkPermission(existingProject.workspaceId, req.currentUser.id, 'projects:delete');
+  const canDelete = project_role === 'owner' || canDeleteWorkspace;
   if (!canDelete) {
     return sendError(res, 'You do not have permission to delete this project', 403);
   }
 
-  await withTransaction(async (connection) => {
-    await connection.execute(`
-      INSERT INTO activity_logs (user_id, workspace_id, activity_type, description)
-      VALUES (?, ?, 'project_deleted', 'A project was deleted')
-    `, [req.currentUser.id, existingProject.workspace_id]);
+  await prisma.$transaction(async (tx) => {
+    await tx.activityLog.create({
+      data: {
+        userId: req.currentUser.id,
+        workspaceId: existingProject.workspaceId,
+        activityType: 'project_deleted',
+        description: 'A project was deleted'
+      }
+    });
 
-    await connection.execute('DELETE FROM projects WHERE id = ?', [req.params.id]);
+    await tx.project.delete({
+      where: { id: parseInt(req.params.id, 10) }
+    });
   });
 
   return sendSuccess(res, { message: 'Project deleted successfully' });
 }));
 
 projectsRouter.get('/:projectId/members', asyncHandler(async (req, res) => {
-  const accessRows = await query(`
-    SELECT p.workspace_id
-    FROM projects p
-    INNER JOIN workspace_members wm ON wm.workspace_id = p.workspace_id
-    WHERE p.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.projectId, req.currentUser.id]);
+  const project = await prisma.project.findFirst({
+    where: {
+      id: parseInt(req.params.projectId, 10),
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    },
+    select: {
+      workspaceId: true
+    }
+  });
 
-  if (!accessRows[0]) {
+  if (!project) {
     return sendError(res, 'Project access denied or project not found', 403);
   }
 
-  const members = await query(`
-    SELECT u.id, u.first_name, u.last_name, u.email, wm.role AS workspace_role
-    FROM workspace_members wm
-    INNER JOIN users u ON u.id = wm.user_id
-    WHERE wm.workspace_id = ?
-    ORDER BY u.first_name ASC, u.last_name ASC
-  `, [accessRows[0].workspace_id]);
+  const workspaceMembers = await prisma.workspaceMember.findMany({
+    where: {
+      workspaceId: project.workspaceId
+    },
+    include: {
+      user: true
+    },
+    orderBy: [
+      { user: { firstName: 'asc' } },
+      { user: { lastName: 'asc' } }
+    ]
+  });
+
+  const members = workspaceMembers.map((wm) => ({
+    id: wm.user.id,
+    first_name: wm.user.firstName,
+    last_name: wm.user.lastName,
+    email: wm.user.email,
+    workspace_role: wm.role
+  }));
 
   return sendSuccess(res, { members });
 }));

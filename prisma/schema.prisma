@@ -1,0 +1,435 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Organization {
+  id                 Int         @id @default(autoincrement())
+  name               String      @db.VarChar(255)
+  slug               String      @unique @db.VarChar(255)
+  logoUrl            String?     @map("logo_url") @db.VarChar(500)
+  subscriptionTier   String?     @default("free") @map("subscription_tier") @db.VarChar(50)
+  isActive           Boolean?    @default(true) @map("is_active")
+  createdAt          DateTime?   @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt          DateTime?   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  ownerId            Int?        @map("owner_id")
+  timezone           String?     @db.VarChar(100)
+  defaultLanguage    String?     @map("default_language") @db.VarChar(20)
+  dateFormat         String?     @map("date_format") @db.VarChar(30)
+  timeFormat         String?     @map("time_format") @db.VarChar(30)
+  subscriptionStatus String      @default("active") @map("subscription_status") @db.VarChar(50)
+  owner              User?       @relation(fields: [ownerId], references: [id])
+  workspaces         Workspace[]
+
+  @@index([slug], map: "idx_slug")
+  @@index([isActive], map: "idx_is_active")
+  @@index([ownerId], map: "organizations_owner_id_fkey")
+  @@map("organizations")
+}
+
+model User {
+  id                   Int               @id @default(autoincrement())
+  email                String            @unique @db.VarChar(255)
+  passwordHash         String            @map("password_hash") @db.VarChar(255)
+  firstName            String            @map("first_name") @db.VarChar(100)
+  lastName             String            @map("last_name") @db.VarChar(100)
+  avatarUrl            String?           @map("avatar_url") @db.VarChar(500)
+  emailVerifiedAt      DateTime?         @map("email_verified_at") @db.Timestamp(0)
+  isActive             Boolean?          @default(true) @map("is_active")
+  createdAt            DateTime?         @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt            DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  activityLogs         ActivityLog[]
+  uploadedAttachments  Attachment[]
+  commentMentions      CommentMention[]
+  comments             Comment[]
+  notifications        Notification[]
+  ownedOrganizations   Organization[]
+  projectMemberships   ProjectMember[]
+  ownedProjects        Project[]         @relation("ProjectOwner")
+  taskFollowers        TaskFollower[]
+  assignedByTasks      Task[]            @relation("TaskAssignedBy")
+  assignedTasks        Task[]            @relation("TaskAssignee")
+  createdTasks         Task[]            @relation("TaskCreator")
+  workspaceMemberships WorkspaceMember[]
+
+  @@index([email], map: "idx_email")
+  @@index([isActive], map: "idx_is_active")
+  @@map("users")
+}
+
+model Workspace {
+  id             Int               @id @default(autoincrement())
+  organizationId Int               @map("organization_id")
+  name           String            @db.VarChar(255)
+  slug           String            @db.VarChar(255)
+  description    String?           @db.Text
+  logoUrl        String?           @map("logo_url") @db.VarChar(500)
+  colorTheme     String?           @default("blue") @map("color_theme") @db.VarChar(50)
+  isActive       Boolean?          @default(true) @map("is_active")
+  createdAt      DateTime?         @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  activityLogs   ActivityLog[]
+  notifications  Notification[]
+  projects       Project[]
+  roles          Role[]
+  taskTags       TaskTag[]
+  members        WorkspaceMember[]
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug], name: "unique_org_slug")
+  @@index([organizationId], map: "idx_organization_id")
+  @@index([slug], map: "idx_slug")
+  @@index([isActive], map: "idx_is_active")
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          Int       @id @default(autoincrement())
+  workspaceId Int       @map("workspace_id")
+  userId      Int       @map("user_id")
+  role        String    @default("member") @db.VarChar(50)
+  roleId      Int?      @map("role_id")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  roleObj     Role?     @relation(fields: [roleId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId], name: "unique_workspace_user")
+  @@index([workspaceId], map: "idx_workspace_id")
+  @@index([userId], map: "idx_user_id")
+  @@index([role], map: "idx_role")
+  @@index([roleId], map: "workspace_members_role_id_fkey")
+  @@map("workspace_members")
+}
+
+model Project {
+  id                 Int             @id @default(autoincrement())
+  workspaceId        Int             @map("workspace_id")
+  name               String          @db.VarChar(255)
+  description        String?         @db.Text
+  status             String?         @default("active") @db.VarChar(50)
+  ownerId            Int             @map("owner_id")
+  startDate          DateTime?       @map("start_date") @db.Date
+  endDate            DateTime?       @map("end_date") @db.Date
+  progressPercentage Int?            @default(0) @map("progress_percentage")
+  healthStatus       String?         @default("on_track") @map("health_status") @db.VarChar(50)
+  isTemplate         Boolean?        @default(false) @map("is_template")
+  createdAt          DateTime?       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt          DateTime?       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  activityLogs       ActivityLog[]
+  notifications      Notification[]
+  members            ProjectMember[]
+  owner              User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks              Task[]
+
+  @@index([workspaceId], map: "idx_workspace_id")
+  @@index([ownerId], map: "idx_owner_id")
+  @@index([status], map: "idx_status")
+  @@index([healthStatus], map: "idx_health_status")
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        Int       @id @default(autoincrement())
+  projectId Int       @map("project_id")
+  userId    Int       @map("user_id")
+  role      String?   @default("contributor") @db.VarChar(50)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId], name: "unique_project_user")
+  @@index([projectId], map: "idx_project_id")
+  @@index([userId], map: "idx_user_id")
+  @@map("project_members")
+}
+
+model Task {
+  id             Int                 @id @default(autoincrement())
+  projectId      Int                 @map("project_id")
+  parentTaskId   Int?                @map("parent_task_id")
+  title          String              @db.VarChar(500)
+  description    String?             @db.Text
+  status         String?             @default("todo") @db.VarChar(50)
+  priority       String?             @default("medium") @db.VarChar(50)
+  assigneeId     Int?                @map("assignee_id")
+  assignedBy     Int?                @map("assigned_by")
+  startDate      DateTime?           @map("start_date") @db.Date
+  dueDate        DateTime?           @map("due_date") @db.Date
+  position       Int?                @default(0)
+  createdBy      Int                 @map("created_by")
+  createdAt      DateTime?           @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime?           @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  activityLogs   ActivityLog[]
+  attachments    Attachment[]
+  comments       Comment[]
+  notifications  Notification[]
+  dependents     TaskDependency[]    @relation("TaskTarget")
+  dependencies   TaskDependency[]    @relation("TaskSource")
+  followers      TaskFollower[]
+  tagAssignments TaskTagAssignment[]
+  assignedByUser User?               @relation("TaskAssignedBy", fields: [assignedBy], references: [id])
+  assignee       User?               @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator        User                @relation("TaskCreator", fields: [createdBy], references: [id])
+  parentTask     Task?               @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks       Task[]              @relation("TaskSubtasks")
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId], map: "idx_project_id")
+  @@index([parentTaskId], map: "idx_parent_task_id")
+  @@index([assigneeId], map: "idx_assignee_id")
+  @@index([assignedBy], map: "idx_assigned_by")
+  @@index([status], map: "idx_status")
+  @@index([priority], map: "idx_priority")
+  @@index([dueDate], map: "idx_due_date")
+  @@index([position], map: "idx_position")
+  @@index([createdBy], map: "tasks_created_by_fkey")
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id              Int       @id @default(autoincrement())
+  taskId          Int       @map("task_id")
+  dependsOnTaskId Int       @map("depends_on_task_id")
+  dependencyType  String?   @default("finish_to_start") @map("dependency_type") @db.VarChar(50)
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  dependsOnTask   Task      @relation("TaskTarget", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  task            Task      @relation("TaskSource", fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId], name: "unique_dependency")
+  @@index([taskId], map: "idx_task_id")
+  @@index([dependsOnTaskId], map: "idx_depends_on_task_id")
+  @@map("task_dependencies")
+}
+
+model TaskTag {
+  id          Int                 @id @default(autoincrement())
+  workspaceId Int                 @map("workspace_id")
+  name        String              @db.VarChar(100)
+  color       String?             @default("#3B82F6") @db.VarChar(7)
+  createdAt   DateTime?           @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt   DateTime?           @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  assignments TaskTagAssignment[]
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name], name: "unique_workspace_tag")
+  @@index([workspaceId], map: "idx_workspace_id")
+  @@map("task_tags")
+}
+
+model TaskTagAssignment {
+  id        Int       @id @default(autoincrement())
+  taskId    Int       @map("task_id")
+  tagId     Int       @map("tag_id")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  tag       TaskTag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, tagId], name: "unique_task_tag")
+  @@index([taskId], map: "idx_task_id")
+  @@index([tagId], map: "idx_tag_id")
+  @@map("task_tag_assignments")
+}
+
+model TaskFollower {
+  id        Int       @id @default(autoincrement())
+  taskId    Int       @map("task_id")
+  userId    Int       @map("user_id")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId], name: "unique_task_follower")
+  @@index([taskId], map: "idx_task_id")
+  @@index([userId], map: "idx_user_id")
+  @@map("task_followers")
+}
+
+model Comment {
+  id              Int              @id @default(autoincrement())
+  taskId          Int              @map("task_id")
+  parentCommentId Int?             @map("parent_comment_id")
+  userId          Int              @map("user_id")
+  content         String           @db.Text
+  createdAt       DateTime?        @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime?        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  attachments     Attachment[]
+  mentions        CommentMention[]
+  parentComment   Comment?         @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies         Comment[]        @relation("CommentReplies")
+  task            Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id])
+
+  @@index([taskId], map: "idx_task_id")
+  @@index([parentCommentId], map: "idx_parent_comment_id")
+  @@index([userId], map: "idx_user_id")
+  @@index([createdAt], map: "idx_created_at")
+  @@map("comments")
+}
+
+model CommentMention {
+  id              Int       @id @default(autoincrement())
+  commentId       Int       @map("comment_id")
+  mentionedUserId Int       @map("mentioned_user_id")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  comment         Comment   @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUser   User      @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, mentionedUserId], name: "unique_comment_mention")
+  @@index([commentId], map: "idx_comment_id")
+  @@index([mentionedUserId], map: "idx_mentioned_user_id")
+  @@map("comment_mentions")
+}
+
+model ActivityLog {
+  id           Int        @id @default(autoincrement())
+  userId       Int?       @map("user_id")
+  workspaceId  Int?       @map("workspace_id")
+  projectId    Int?       @map("project_id")
+  taskId       Int?       @map("task_id")
+  activityType String     @map("activity_type") @db.VarChar(100)
+  description  String     @db.Text
+  metadata     String?    @db.LongText
+  createdAt    DateTime?  @default(now()) @map("created_at") @db.Timestamp(0)
+  project      Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task         Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user         User?      @relation(fields: [userId], references: [id])
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_id")
+  @@index([workspaceId], map: "idx_workspace_id")
+  @@index([projectId], map: "idx_project_id")
+  @@index([taskId], map: "idx_task_id")
+  @@index([activityType], map: "idx_activity_type")
+  @@index([createdAt], map: "idx_created_at")
+  @@map("activity_logs")
+}
+
+model Notification {
+  id                 Int        @id @default(autoincrement())
+  userId             Int        @map("user_id")
+  type               String     @db.VarChar(100)
+  title              String     @db.VarChar(255)
+  message            String     @db.Text
+  relatedWorkspaceId Int?       @map("related_workspace_id")
+  relatedProjectId   Int?       @map("related_project_id")
+  relatedTaskId      Int?       @map("related_task_id")
+  isRead             Boolean?   @default(false) @map("is_read")
+  readAt             DateTime?  @map("read_at") @db.Timestamp(0)
+  createdAt          DateTime?  @default(now()) @map("created_at") @db.Timestamp(0)
+  relatedProject     Project?   @relation(fields: [relatedProjectId], references: [id], onDelete: Cascade)
+  relatedTask        Task?      @relation(fields: [relatedTaskId], references: [id], onDelete: Cascade)
+  relatedWorkspace   Workspace? @relation(fields: [relatedWorkspaceId], references: [id], onDelete: Cascade)
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_id")
+  @@index([isRead], map: "idx_is_read")
+  @@index([createdAt], map: "idx_created_at")
+  @@index([userId, isRead], map: "idx_user_unread")
+  @@index([relatedProjectId], map: "notifications_related_project_id_fkey")
+  @@index([relatedTaskId], map: "notifications_related_task_id_fkey")
+  @@index([relatedWorkspaceId], map: "notifications_related_workspace_id_fkey")
+  @@map("notifications")
+}
+
+model Attachment {
+  id         Int       @id @default(autoincrement())
+  taskId     Int?      @map("task_id")
+  commentId  Int?      @map("comment_id")
+  uploadedBy Int       @map("uploaded_by")
+  fileName   String    @map("file_name") @db.VarChar(255)
+  filePath   String    @map("file_path") @db.VarChar(500)
+  fileSize   Int       @map("file_size")
+  mimeType   String    @map("mime_type") @db.VarChar(100)
+  version    Int?      @default(1)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  comment    Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader   User      @relation(fields: [uploadedBy], references: [id])
+
+  @@index([taskId], map: "idx_task_id")
+  @@index([commentId], map: "idx_comment_id")
+  @@index([uploadedBy], map: "idx_uploaded_by")
+  @@map("attachments")
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement())
+  module          String           @db.VarChar(50)
+  action          String           @unique @db.VarChar(100)
+  description     String?          @db.Text
+  createdAt       DateTime?        @default(now()) @map("created_at") @db.Timestamp(0)
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id              Int               @id @default(autoincrement())
+  workspaceId     Int               @map("workspace_id")
+  name            String            @db.VarChar(100)
+  description     String?           @db.Text
+  isSystemRole    Boolean?          @default(false) @map("is_system_role")
+  createdAt       DateTime?         @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  rolePermissions RolePermission[]
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members         WorkspaceMember[]
+
+  @@unique([workspaceId, name], name: "unique_workspace_role")
+  @@map("roles")
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  createdAt    DateTime?  @default(now()) @map("created_at") @db.Timestamp(0)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId], name: "unique_role_permission")
+  @@index([permissionId], map: "role_permissions_permission_id_fkey")
+  @@map("role_permissions")
+}
+
+model EmailVerificationToken {
+  id        Int       @id @default(autoincrement())
+  email     String    @db.VarChar(255)
+  token     String    @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamp(0)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@index([email], map: "idx_email")
+  @@index([token], map: "idx_token")
+  @@map("email_verification_tokens")
+}
+
+model EmailOtpVerification {
+  id        Int      @id @default(autoincrement())
+  email     String   @db.VarChar(255)
+  otpCode   String   @map("otp_code") @db.VarChar(50)
+  expiresAt DateTime @map("expires_at") @db.Timestamp(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@index([email], map: "idx_email")
+  @@map("email_otp_verifications")
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  email     String   @db.VarChar(255)
+  token     String   @db.VarChar(255)
+  expiresAt DateTime @map("expires_at") @db.Timestamp(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+
+  @@index([email], map: "idx_email")
+  @@index([token], map: "idx_token")
+  @@map("password_resets")
+}

@@ -1,10 +1,9 @@
 const express = require('express');
-
-const { query, withTransaction } = require('../config/database');
+const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
-const { buildUpdateClause, isValidDate } = require('../utils/validation');
+const { isValidDate } = require('../utils/validation');
 const sseManager = require('../utils/sse-manager');
 
 const tasksRouter = express.Router();
@@ -12,150 +11,188 @@ const tasksRouter = express.Router();
 tasksRouter.use(attachCurrentUser, requireAuth);
 
 async function getTaskTags(taskId) {
-  return query(`
-    SELECT tt.id, tt.name, tt.color
-    FROM task_tags tt
-    INNER JOIN task_tag_assignments tta ON tta.tag_id = tt.id
-    WHERE tta.task_id = ?
-  `, [taskId]);
+  const assignments = await prisma.taskTagAssignment.findMany({
+    where: { taskId },
+    include: { tag: true }
+  });
+  return assignments.map((a) => ({
+    id: a.tag.id,
+    name: a.tag.name,
+    color: a.tag.color
+  }));
 }
 
 async function isWorkspaceMember(workspaceId, userId) {
-  const rows = await query(
-    'SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ? LIMIT 1',
-    [workspaceId, userId]
-  );
+  const member = await prisma.workspaceMember.findFirst({
+    where: {
+      workspaceId: parseInt(workspaceId, 10),
+      userId: parseInt(userId, 10)
+    },
+    select: { id: true }
+  });
+  return Boolean(member);
+}
 
-  return Boolean(rows[0]);
+function mapTask(t) {
+  if (!t) return null;
+  return {
+    id: t.id,
+    project_id: t.projectId,
+    parent_task_id: t.parentTaskId,
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    assignee_id: t.assigneeId,
+    assigned_by: t.assignedBy,
+    start_date: t.startDate,
+    due_date: t.dueDate,
+    position: t.position,
+    created_by: t.createdBy,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+    assignee_first_name: t.assignee?.firstName || null,
+    assignee_last_name: t.assignee?.lastName || null,
+    assignee_email: t.assignee?.email || null,
+    creator_first_name: t.creator?.firstName || null,
+    creator_last_name: t.creator?.lastName || null,
+    creator_email: t.creator?.email || null,
+    assigner_first_name: t.assignedByUser?.firstName || null,
+    assigner_last_name: t.assignedByUser?.lastName || null,
+    project_name: t.project?.name || null,
+    tags: t.tags || []
+  };
 }
 
 tasksRouter.get('/', asyncHandler(async (req, res) => {
-  const conditions = [];
-  const params = [];
+  const where = {};
 
   if (req.query.project_id) {
-    const projectRows = await query(`
-      SELECT p.id
-      FROM projects p
-      INNER JOIN workspaces w ON w.id = p.workspace_id
-      INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-      WHERE p.id = ? AND wm.user_id = ?
-      LIMIT 1
-    `, [req.query.project_id, req.currentUser.id]);
+    const project = await prisma.project.findFirst({
+      where: {
+        id: parseInt(req.query.project_id, 10),
+        workspace: {
+          members: {
+            some: {
+              userId: req.currentUser.id
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
 
-    if (!projectRows[0]) {
+    if (!project) {
       return sendError(res, 'Project access denied', 403);
     }
 
-    conditions.push('t.project_id = ?');
-    params.push(req.query.project_id);
-  }
-  else if (req.query.workspace_id) {
-    const accessRows = await query(`
-      SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-    `, [req.query.workspace_id, req.currentUser.id]);
+    where.projectId = parseInt(req.query.project_id, 10);
+  } else if (req.query.workspace_id) {
+    const workspaceMember = await prisma.workspaceMember.findFirst({
+      where: {
+        workspaceId: parseInt(req.query.workspace_id, 10),
+        userId: req.currentUser.id
+      },
+      select: { role: true }
+    });
 
-    if (!accessRows[0]) {
+    if (!workspaceMember) {
       return sendError(res, 'Workspace access denied', 403);
     }
 
-    conditions.push(`EXISTS (
-      SELECT 1 FROM projects p3 
-      WHERE p3.id = t.project_id AND p3.workspace_id = ?
-    )`);
-    params.push(req.query.workspace_id);
-  }
-  else {
-    conditions.push(`EXISTS (
-      SELECT 1
-      FROM projects p2
-      INNER JOIN workspaces w2 ON w2.id = p2.workspace_id
-      INNER JOIN workspace_members wm2 ON wm2.workspace_id = w2.id
-      WHERE p2.id = t.project_id AND wm2.user_id = ?
-    )`);
-    params.push(req.currentUser.id);
+    where.project = {
+      workspaceId: parseInt(req.query.workspace_id, 10)
+    };
+  } else {
+    where.project = {
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    };
   }
 
   if (Object.prototype.hasOwnProperty.call(req.query, 'parent_task_id')) {
     if (req.query.parent_task_id === '') {
-      conditions.push('t.parent_task_id IS NULL');
-    }
-    else {
-      conditions.push('t.parent_task_id = ?');
-      params.push(req.query.parent_task_id);
+      where.parentTaskId = null;
+    } else {
+      where.parentTaskId = parseInt(req.query.parent_task_id, 10);
     }
   }
 
   if (req.query.status) {
-    conditions.push('t.status = ?');
-    params.push(req.query.status);
+    where.status = req.query.status;
   }
 
   if (req.query.assignee_id) {
-    conditions.push('t.assignee_id = ?');
-    params.push(req.query.assignee_id);
+    where.assigneeId = parseInt(req.query.assignee_id, 10);
   }
 
-  const tasks = await query(`
-    SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
-           t.position, t.created_by, t.created_at, t.updated_at,
-           assignee.first_name AS assignee_first_name,
-           assignee.last_name AS assignee_last_name,
-           assignee.email AS assignee_email,
-           creator.first_name AS creator_first_name,
-           creator.last_name AS creator_last_name,
-           creator.email AS creator_email,
-           assigner.first_name AS assigner_first_name,
-           assigner.last_name AS assigner_last_name,
-           p.name AS project_name
-    FROM tasks t
-    LEFT JOIN users assignee ON assignee.id = t.assignee_id
-    LEFT JOIN users creator ON creator.id = t.created_by
-    LEFT JOIN users assigner ON assigner.id = t.assigned_by
-    LEFT JOIN projects p ON p.id = t.project_id
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY t.position ASC, t.created_at DESC
-  `, params);
+  const tasksDb = await prisma.task.findMany({
+    where,
+    include: {
+      assignee: true,
+      creator: true,
+      assignedByUser: true,
+      project: {
+        select: {
+          name: true
+        }
+      }
+    },
+    orderBy: [
+      { position: 'asc' },
+      { createdAt: 'desc' }
+    ]
+  });
 
-  for (const task of tasks) {
-    task.tags = await getTaskTags(task.id);
+  const tasks = [];
+  for (const t of tasksDb) {
+    const mapped = mapTask(t);
+    mapped.tags = await getTaskTags(t.id);
+    tasks.push(mapped);
   }
 
   return sendSuccess(res, { tasks });
 }));
 
 tasksRouter.get('/:id', asyncHandler(async (req, res) => {
-  const rows = await query(`
-    SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
-           t.position, t.created_by, t.created_at, t.updated_at,
-           assignee.first_name AS assignee_first_name,
-           assignee.last_name AS assignee_last_name,
-           assignee.email AS assignee_email,
-           creator.first_name AS creator_first_name,
-           creator.last_name AS creator_last_name,
-           creator.email AS creator_email,
-           p.name AS project_name,
-           assigner.first_name AS assigner_first_name,
-           assigner.last_name AS assigner_last_name
-    FROM tasks t
-    LEFT JOIN users assignee ON assignee.id = t.assignee_id
-    LEFT JOIN users creator ON creator.id = t.created_by
-    LEFT JOIN users assigner ON assigner.id = t.assigned_by
-    LEFT JOIN projects p ON p.id = t.project_id
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE t.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const taskDb = await prisma.task.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      project: {
+        workspace: {
+          members: {
+            some: {
+              userId: req.currentUser.id
+            }
+          }
+        }
+      }
+    },
+    include: {
+      assignee: true,
+      creator: true,
+      assignedByUser: true,
+      project: {
+        select: {
+          name: true
+        }
+      }
+    }
+  });
 
-  if (!rows[0]) {
+  if (!taskDb) {
     return sendError(res, 'Task not found or access denied', 404);
   }
 
-  rows[0].tags = await getTaskTags(req.params.id);
-  return sendSuccess(res, { task: rows[0] });
+  const task = mapTask(taskDb);
+  task.tags = await getTaskTags(taskDb.id);
+
+  return sendSuccess(res, { task });
 }));
 
 tasksRouter.post('/', asyncHandler(async (req, res) => {
@@ -176,8 +213,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   }
   if (!title) {
     errors.title = 'Task title is required';
-  }
-  else if (title.length > 500) {
+  } else if (title.length > 500) {
     errors.title = 'Task title must be 500 characters or less';
   }
   if (!['todo', 'in_progress', 'review', 'done', 'cancelled'].includes(status)) {
@@ -193,22 +229,29 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     errors.due_date = 'Invalid due date format';
   }
 
-  const projectRows = project_id ? await query(`
-    SELECT p.id, p.workspace_id, p.name
-    FROM projects p
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE p.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [project_id, req.currentUser.id]) : [];
+  const project = project_id ? await prisma.project.findFirst({
+    where: {
+      id: parseInt(project_id, 10),
+      workspace: {
+        members: {
+          some: {
+            userId: req.currentUser.id
+          }
+        }
+      }
+    },
+    select: {
+      id: true,
+      workspaceId: true,
+      name: true
+    }
+  }) : null;
 
-  const project = projectRows[0];
   if (project_id) {
     if (!project) {
       errors.project_id = 'Project access denied';
-    }
-    else {
-      const canCreate = await checkPermission(project.workspace_id, req.currentUser.id, 'tasks:create');
+    } else {
+      const canCreate = await checkPermission(project.workspaceId, req.currentUser.id, 'tasks:create');
       if (!canCreate) {
         errors.project_id = 'You do not have permission to create tasks in this workspace';
       }
@@ -216,17 +259,21 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   }
 
   if (parent_task_id) {
-    const parentRows = await query(`
-      SELECT id FROM tasks WHERE id = ? AND project_id = ?
-    `, [parent_task_id, project_id]);
+    const parentTask = await prisma.task.findFirst({
+      where: {
+        id: parseInt(parent_task_id, 10),
+        projectId: parseInt(project_id, 10)
+      },
+      select: { id: true }
+    });
 
-    if (!parentRows[0]) {
+    if (!parentTask) {
       errors.parent_task_id = 'Parent task not found or belongs to different project';
     }
   }
 
   if (assignee_id && project) {
-    const assigneeIsMember = await isWorkspaceMember(project.workspace_id, assignee_id);
+    const assigneeIsMember = await isWorkspaceMember(project.workspaceId, assignee_id);
     if (!assigneeIsMember) {
       errors.assignee_id = 'Assignee must be a member of this workspace';
     }
@@ -236,96 +283,121 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const task = await withTransaction(async (connection) => {
-    const [positionRows] = await connection.execute(`
-      SELECT COALESCE(MAX(position), 0) + 1 AS next_position
-      FROM tasks
-      WHERE project_id = ? AND (parent_task_id <=> ?)
-    `, [project_id, parent_task_id]);
+  const task = await prisma.$transaction(async (tx) => {
+    const aggregate = await tx.task.aggregate({
+      where: {
+        projectId: parseInt(project_id, 10),
+        parentTaskId: parent_task_id ? parseInt(parent_task_id, 10) : null
+      },
+      _max: {
+        position: true
+      }
+    });
 
-    const position = positionRows[0].next_position || 1;
+    const position = (aggregate._max.position || 0) + 1;
 
-    const [taskResult] = await connection.execute(`
-      INSERT INTO tasks (project_id, parent_task_id, title, description, status, priority, assignee_id, assigned_by, start_date, due_date, position, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      project_id,
-      parent_task_id,
-      title,
-      description || null,
-      status,
-      priority,
-      assignee_id,
-      assignee_id ? req.currentUser.id : null,
-      start_date || null,
-      due_date || null,
-      position,
-      req.currentUser.id,
-    ]);
+    const newTask = await tx.task.create({
+      data: {
+        projectId: parseInt(project_id, 10),
+        parentTaskId: parent_task_id ? parseInt(parent_task_id, 10) : null,
+        title,
+        description: description || null,
+        status,
+        priority,
+        assigneeId: assignee_id ? parseInt(assignee_id, 10) : null,
+        assignedBy: assignee_id ? req.currentUser.id : null,
+        startDate: start_date ? new Date(start_date) : null,
+        dueDate: due_date ? new Date(due_date) : null,
+        position,
+        createdBy: req.currentUser.id
+      }
+    });
 
     for (const tagId of tags) {
-      const [tagRows] = await connection.execute(`
-        SELECT id FROM task_tags WHERE id = ? AND workspace_id = ?
-      `, [tagId, project.workspace_id]);
+      const tag = await tx.taskTag.findFirst({
+        where: {
+          id: parseInt(tagId, 10),
+          workspaceId: project.workspaceId
+        },
+        select: { id: true }
+      });
 
-      if (tagRows[0]) {
-        await connection.execute(`
-          INSERT INTO task_tag_assignments (task_id, tag_id)
-          VALUES (?, ?)
-        `, [taskResult.insertId, tagId]);
+      if (tag) {
+        await tx.taskTagAssignment.create({
+          data: {
+            taskId: newTask.id,
+            tagId: tag.id
+          }
+        });
       }
     }
 
-    await connection.execute(`
-      INSERT INTO task_followers (task_id, user_id)
-      VALUES (?, ?)
-    `, [taskResult.insertId, req.currentUser.id]);
+    await tx.taskFollower.create({
+      data: {
+        taskId: newTask.id,
+        userId: req.currentUser.id
+      }
+    });
 
-    await connection.execute(`
-      INSERT INTO activity_logs (user_id, workspace_id, project_id, task_id, activity_type, description)
-      VALUES (?, ?, ?, ?, 'task_created', ?)
-    `, [req.currentUser.id, project.workspace_id, project_id, taskResult.insertId, `Task '${title}' was created`]);
+    await tx.activityLog.create({
+      data: {
+        userId: req.currentUser.id,
+        workspaceId: project.workspaceId,
+        projectId: parseInt(project_id, 10),
+        taskId: newTask.id,
+        activityType: 'task_created',
+        description: `Task '${title}' was created`
+      }
+    });
 
     if (assignee_id && Number(assignee_id) !== Number(req.currentUser.id)) {
-      await connection.execute(`
-        INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
-        VALUES (?, 'task_assigned', ?, ?, ?, ?, ?)
-      `, [assignee_id, `New task assigned: ${title}`, 'You have been assigned to a new task', project.workspace_id, project_id, taskResult.insertId]);
+      const newNotif = await tx.notification.create({
+        data: {
+          userId: parseInt(assignee_id, 10),
+          type: 'task_assigned',
+          title: `New task assigned: ${title}`,
+          message: 'You have been assigned to a new task',
+          relatedWorkspaceId: project.workspaceId,
+          relatedProjectId: parseInt(project_id, 10),
+          relatedTaskId: newTask.id
+        }
+      });
 
-      // Get the newly created notification to broadcast it
-      const [newNotif] = await connection.execute(`
-        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
-        FROM notifications n
-        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
-        LEFT JOIN projects p ON n.related_project_id = p.id
-        WHERE n.id = LAST_INSERT_ID()
-      `, [title]);
+      const workspaceObj = await tx.workspace.findUnique({
+        where: { id: project.workspaceId },
+        select: { name: true }
+      });
 
-      if (newNotif[0]) {
-        sseManager.broadcastToUser(assignee_id, 'new_notification', newNotif[0]);
-      }
+      const broadcastPayload = {
+        id: newNotif.id,
+        user_id: newNotif.userId,
+        type: newNotif.type,
+        title: newNotif.title,
+        message: newNotif.message,
+        related_workspace_id: newNotif.relatedWorkspaceId,
+        related_project_id: newNotif.relatedProjectId,
+        related_task_id: newNotif.relatedTaskId,
+        is_read: newNotif.isRead,
+        read_at: newNotif.readAt,
+        created_at: newNotif.createdAt,
+        workspace_name: workspaceObj?.name || null,
+        project_name: project.name,
+        task_title: title
+      };
+
+      sseManager.broadcastToUser(parseInt(assignee_id, 10), 'new_notification', broadcastPayload);
     }
 
-    const [taskRows] = await connection.execute(`
-      SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-             t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
-             t.position, t.created_by, t.created_at, t.updated_at,
-             assignee.first_name AS assignee_first_name,
-             assignee.last_name AS assignee_last_name,
-             assignee.email AS assignee_email,
-             creator.first_name AS creator_first_name,
-             creator.last_name AS creator_last_name,
-             creator.email AS creator_email,
-             assigner.first_name AS assigner_first_name,
-             assigner.last_name AS assigner_last_name
-      FROM tasks t
-      LEFT JOIN users assignee ON assignee.id = t.assignee_id
-      LEFT JOIN users creator ON creator.id = t.created_by
-      LEFT JOIN users assigner ON assigner.id = t.assigned_by
-      WHERE t.id = ?
-    `, [taskResult.insertId]);
+    const taskWithRelations = await tx.task.findUnique({
+      where: { id: newTask.id },
+      include: {
+        assignee: true,
+        creator: true,
+        assignedByUser: true
+      }
+    });
 
-    return taskRows[0];
+    return mapTask(taskWithRelations);
   });
 
   task.tags = await getTaskTags(task.id);
@@ -333,23 +405,36 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
 }));
 
 tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const taskRows = await query(`
-    SELECT t.id, t.project_id, t.assignee_id, t.created_by, t.status, p.workspace_id
-    FROM tasks t
-    INNER JOIN projects p ON p.id = t.project_id
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE t.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const existingTask = await prisma.task.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      project: {
+        workspace: {
+          members: {
+            some: {
+              userId: req.currentUser.id
+            }
+          }
+        }
+      }
+    },
+    include: {
+      project: {
+        select: {
+          workspaceId: true,
+          name: true
+        }
+      }
+    }
+  });
 
-  const existingTask = taskRows[0];
   if (!existingTask) {
     return sendError(res, 'Task not found or access denied', 404);
   }
 
-  const canEdit = await checkPermission(existingTask.workspace_id, req.currentUser.id, 'tasks:edit');
-  if (!canEdit && Number(existingTask.assignee_id) !== Number(req.currentUser.id)) {
+  const workspaceId = existingTask.project.workspaceId;
+  const canEdit = await checkPermission(workspaceId, req.currentUser.id, 'tasks:edit');
+  if (!canEdit && Number(existingTask.assigneeId) !== Number(req.currentUser.id)) {
     return sendError(res, 'You do not have permission to edit this task', 403);
   }
 
@@ -376,47 +461,62 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
     return sendValidationError(res, { due_date: 'Invalid due date format' });
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && req.body.assignee_id) {
-    const assigneeIsMember = await isWorkspaceMember(existingTask.workspace_id, req.body.assignee_id);
+    const assigneeIsMember = await isWorkspaceMember(workspaceId, req.body.assignee_id);
     if (!assigneeIsMember) {
       return sendValidationError(res, { assignee_id: 'Assignee must be a member of this workspace' });
     }
   }
 
-  const { updates, params } = buildUpdateClause(req.body, ['title', 'description', 'status', 'priority', 'assignee_id', 'start_date', 'due_date', 'parent_task_id', 'position']);
+  const updateData = {};
+  if (Object.prototype.hasOwnProperty.call(req.body, 'title')) updateData.title = req.body.title;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'description')) updateData.description = req.body.description || null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'status')) updateData.status = req.body.status;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'priority')) updateData.priority = req.body.priority;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'start_date')) updateData.startDate = req.body.start_date ? new Date(req.body.start_date) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'due_date')) updateData.dueDate = req.body.due_date ? new Date(req.body.due_date) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'parent_task_id')) updateData.parentTaskId = req.body.parent_task_id ? parseInt(req.body.parent_task_id, 10) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'position')) updateData.position = parseInt(req.body.position, 10);
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id')) {
+    updateData.assigneeId = req.body.assignee_id ? parseInt(req.body.assignee_id, 10) : null;
+    updateData.assignedBy = req.body.assignee_id ? req.currentUser.id : null;
+  }
+
   const shouldUpdateTags = Array.isArray(req.body.tags);
 
-  if (updates.length === 0 && !shouldUpdateTags) {
+  if (Object.keys(updateData).length === 0 && !shouldUpdateTags) {
     return sendError(res, 'No fields to update', 400);
   }
 
-  // Handle explicit assignee updates explicitly to update assigned_by
-  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id')) {
-    updates.push('assigned_by = ?');
-    params.push(req.body.assignee_id ? req.currentUser.id : null);
-  }
-
-  await withTransaction(async (connection) => {
-    if (updates.length > 0) {
-      await connection.execute(`
-        UPDATE tasks
-        SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, [...params, req.params.id]);
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(updateData).length > 0) {
+      await tx.task.update({
+        where: { id: parseInt(req.params.id, 10) },
+        data: updateData
+      });
     }
 
     if (shouldUpdateTags) {
-      await connection.execute('DELETE FROM task_tag_assignments WHERE task_id = ?', [req.params.id]);
+      await tx.taskTagAssignment.deleteMany({
+        where: { taskId: parseInt(req.params.id, 10) }
+      });
 
       for (const tagId of req.body.tags) {
-        const [tagRows] = await connection.execute(`
-          SELECT id FROM task_tags WHERE id = ? AND workspace_id = ?
-        `, [tagId, existingTask.workspace_id]);
+        const tag = await tx.taskTag.findFirst({
+          where: {
+            id: parseInt(tagId, 10),
+            workspaceId
+          },
+          select: { id: true }
+        });
 
-        if (tagRows[0]) {
-          await connection.execute(`
-            INSERT INTO task_tag_assignments (task_id, tag_id)
-            VALUES (?, ?)
-          `, [req.params.id, tagId]);
+        if (tag) {
+          await tx.taskTagAssignment.create({
+            data: {
+              taskId: parseInt(req.params.id, 10),
+              tagId: tag.id
+            }
+          });
         }
       }
     }
@@ -425,138 +525,185 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, 'status') && req.body.status !== existingTask.status) {
       changes.push(`status changed from '${existingTask.status}' to '${req.body.status}'`);
     }
-    if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && Number(req.body.assignee_id || 0) !== Number(existingTask.assignee_id || 0)) {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && Number(req.body.assignee_id || 0) !== Number(existingTask.assigneeId || 0)) {
       changes.push('assignee changed');
     }
 
     if (changes.length > 0) {
-      await connection.execute(`
-        INSERT INTO activity_logs (user_id, workspace_id, project_id, task_id, activity_type, description)
-        VALUES (?, ?, ?, ?, 'task_updated', ?)
-      `, [req.currentUser.id, existingTask.workspace_id, existingTask.project_id, req.params.id, `Task updated: ${changes.join(', ')}`]);
+      await tx.activityLog.create({
+        data: {
+          userId: req.currentUser.id,
+          workspaceId,
+          projectId: existingTask.projectId,
+          taskId: parseInt(req.params.id, 10),
+          activityType: 'task_updated',
+          description: `Task updated: ${changes.join(', ')}`
+        }
+      });
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') &&
-      Number(req.body.assignee_id || 0) !== Number(existingTask.assignee_id || 0) &&
+      Number(req.body.assignee_id || 0) !== Number(existingTask.assigneeId || 0) &&
       Number(req.body.assignee_id || 0) !== Number(req.currentUser.id)) {
-      const [projectRows] = await connection.execute('SELECT name FROM projects WHERE id = ?', [existingTask.project_id]);
-      const [taskTitleRows] = await connection.execute('SELECT title FROM tasks WHERE id = ?', [req.params.id]);
+      const updatedTaskTitle = updateData.title || existingTask.title;
 
-      await connection.execute(`
-        INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
-        VALUES (?, 'task_assigned', ?, ?, ?, ?, ?)
-      `, [
-        req.body.assignee_id,
-        `Task assigned: ${taskTitleRows[0].title}`,
-        `You have been assigned to a task in ${projectRows[0].name}`,
-        existingTask.workspace_id,
-        existingTask.project_id,
-        req.params.id,
-      ]);
+      const newNotif = await tx.notification.create({
+        data: {
+          userId: parseInt(req.body.assignee_id, 10),
+          type: 'task_assigned',
+          title: `Task assigned: ${updatedTaskTitle}`,
+          message: `You have been assigned to a task in ${existingTask.project.name}`,
+          relatedWorkspaceId: workspaceId,
+          relatedProjectId: existingTask.projectId,
+          relatedTaskId: parseInt(req.params.id, 10)
+        }
+      });
 
-      const [newNotif] = await connection.execute(`
-        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
-        FROM notifications n
-        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
-        LEFT JOIN projects p ON n.related_project_id = p.id
-        WHERE n.id = LAST_INSERT_ID()
-      `, [taskTitleRows[0].title]);
+      const workspaceObj = await tx.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true }
+      });
 
-      if (newNotif[0]) {
-        sseManager.broadcastToUser(req.body.assignee_id, 'new_notification', newNotif[0]);
-      }
+      const broadcastPayload = {
+        id: newNotif.id,
+        user_id: newNotif.userId,
+        type: newNotif.type,
+        title: newNotif.title,
+        message: newNotif.message,
+        related_workspace_id: newNotif.relatedWorkspaceId,
+        related_project_id: newNotif.relatedProjectId,
+        related_task_id: newNotif.relatedTaskId,
+        is_read: newNotif.isRead,
+        read_at: newNotif.readAt,
+        created_at: newNotif.createdAt,
+        workspace_name: workspaceObj?.name || null,
+        project_name: existingTask.project.name,
+        task_title: updatedTaskTitle
+      };
+
+      sseManager.broadcastToUser(parseInt(req.body.assignee_id, 10), 'new_notification', broadcastPayload);
     }
 
-    // New notification for status change
     if (Object.prototype.hasOwnProperty.call(req.body, 'status') &&
       req.body.status !== existingTask.status &&
-      existingTask.assignee_id &&
-      Number(existingTask.assignee_id) !== Number(req.currentUser.id)) {
-      const [projectRows] = await connection.execute('SELECT name FROM projects WHERE id = ?', [existingTask.project_id]);
-      const [taskTitleRows] = await connection.execute('SELECT title FROM tasks WHERE id = ?', [req.params.id]);
+      existingTask.assigneeId &&
+      Number(existingTask.assigneeId) !== Number(req.currentUser.id)) {
+      const updatedTaskTitle = updateData.title || existingTask.title;
 
-      await connection.execute(`
-        INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
-        VALUES (?, 'task_status_changed', ?, ?, ?, ?, ?)
-      `, [
-        existingTask.assignee_id,
-        `Task status changed: ${taskTitleRows[0].title}`,
-        `The status is now '${req.body.status}'`,
-        existingTask.workspace_id,
-        existingTask.project_id,
-        req.params.id,
-      ]);
+      const newNotif = await tx.notification.create({
+        data: {
+          userId: existingTask.assigneeId,
+          type: 'task_status_changed',
+          title: `Task status changed: ${updatedTaskTitle}`,
+          message: `The status is now '${req.body.status}'`,
+          relatedWorkspaceId: workspaceId,
+          relatedProjectId: existingTask.projectId,
+          relatedTaskId: parseInt(req.params.id, 10)
+        }
+      });
 
-      const [newNotif] = await connection.execute(`
-        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
-        FROM notifications n
-        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
-        LEFT JOIN projects p ON n.related_project_id = p.id
-        WHERE n.id = LAST_INSERT_ID()
-      `, [taskTitleRows[0].title]);
+      const workspaceObj = await tx.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true }
+      });
 
-      if (newNotif[0]) {
-        sseManager.broadcastToUser(existingTask.assignee_id, 'new_notification', newNotif[0]);
+      const broadcastPayload = {
+        id: newNotif.id,
+        user_id: newNotif.userId,
+        type: newNotif.type,
+        title: newNotif.title,
+        message: newNotif.message,
+        related_workspace_id: newNotif.relatedWorkspaceId,
+        related_project_id: newNotif.relatedProjectId,
+        related_task_id: newNotif.relatedTaskId,
+        is_read: newNotif.isRead,
+        read_at: newNotif.readAt,
+        created_at: newNotif.createdAt,
+        workspace_name: workspaceObj?.name || null,
+        project_name: existingTask.project.name,
+        task_title: updatedTaskTitle
+      };
+
+      sseManager.broadcastToUser(existingTask.assigneeId, 'new_notification', broadcastPayload);
+    }
+  });
+
+  const updatedTaskDb = await prisma.task.findUnique({
+    where: { id: parseInt(req.params.id, 10) },
+    include: {
+      assignee: true,
+      creator: true,
+      assignedByUser: true,
+      project: {
+        select: {
+          name: true
+        }
       }
     }
   });
 
-  const rows = await query(`
-    SELECT t.id, t.project_id, t.parent_task_id, t.title, t.description,
-           t.status, t.priority, t.assignee_id, t.assigned_by, t.start_date, t.due_date,
-           t.position, t.created_by, t.created_at, t.updated_at,
-           assignee.first_name AS assignee_first_name,
-           assignee.last_name AS assignee_last_name,
-           assignee.email AS assignee_email,
-           creator.first_name AS creator_first_name,
-           creator.last_name AS creator_last_name,
-           creator.email AS creator_email,
-           assigner.first_name AS assigner_first_name,
-           assigner.last_name AS assigner_last_name
-    FROM tasks t
-    LEFT JOIN users assignee ON assignee.id = t.assignee_id
-    LEFT JOIN users creator ON creator.id = t.created_by
-    LEFT JOIN users assigner ON assigner.id = t.assigned_by
-    WHERE t.id = ?
-  `, [req.params.id]);
+  const updatedTask = mapTask(updatedTaskDb);
+  updatedTask.tags = await getTaskTags(req.params.id);
 
-  rows[0].tags = await getTaskTags(req.params.id);
-  return sendSuccess(res, { task: rows[0] });
+  return sendSuccess(res, { task: updatedTask });
 }));
 
 tasksRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const rows = await query(`
-    SELECT t.id, t.project_id, t.title, p.workspace_id
-    FROM tasks t
-    INNER JOIN projects p ON p.id = t.project_id
-    INNER JOIN workspaces w ON w.id = p.workspace_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE t.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const task = await prisma.task.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      project: {
+        workspace: {
+          members: {
+            some: {
+              userId: req.currentUser.id
+            }
+          }
+        }
+      }
+    },
+    include: {
+      project: {
+        select: {
+          workspaceId: true
+        }
+      }
+    }
+  });
 
-  const task = rows[0];
   if (!task) {
     return sendError(res, 'Task not found or access denied', 404);
   }
 
-  const canDelete = await checkPermission(task.workspace_id, req.currentUser.id, 'tasks:delete');
+  const workspaceId = task.project.workspaceId;
+  const canDelete = await checkPermission(workspaceId, req.currentUser.id, 'tasks:delete');
   if (!canDelete) {
     return sendError(res, 'You do not have permission to delete this task', 403);
   }
 
-  const subtaskRows = await query('SELECT COUNT(*) AS count FROM tasks WHERE parent_task_id = ?', [req.params.id]);
-  if (Number(subtaskRows[0].count) > 0) {
+  const subtaskCount = await prisma.task.count({
+    where: { parentTaskId: parseInt(req.params.id, 10) }
+  });
+
+  if (subtaskCount > 0) {
     return sendError(res, 'Cannot delete task with subtasks. Please delete or move subtasks first.', 400);
   }
 
-  await withTransaction(async (connection) => {
-    await connection.execute(`
-      INSERT INTO activity_logs (user_id, workspace_id, project_id, task_id, activity_type, description)
-      VALUES (?, ?, ?, ?, 'task_deleted', ?)
-    `, [req.currentUser.id, task.workspace_id, task.project_id, req.params.id, `Task '${task.title}' was deleted`]);
+  await prisma.$transaction(async (tx) => {
+    await tx.activityLog.create({
+      data: {
+        userId: req.currentUser.id,
+        workspaceId,
+        projectId: task.projectId,
+        taskId: parseInt(req.params.id, 10),
+        activityType: 'task_deleted',
+        description: `Task '${task.title}' was deleted`
+      }
+    });
 
-    await connection.execute('DELETE FROM tasks WHERE id = ?', [req.params.id]);
+    await tx.task.delete({
+      where: { id: parseInt(req.params.id, 10) }
+    });
   });
 
   return sendSuccess(res, { message: 'Task deleted successfully' });

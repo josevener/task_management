@@ -1,56 +1,93 @@
-const { query } = require('../config/database');
+const { prisma } = require('../config/database');
 const sseManager = require('./sse-manager');
+
+function getStartOfToday(now = new Date()) {
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  return startOfToday;
+}
 
 /**
  * Checks for tasks that are overdue and haven't triggered a notification recently.
  * Specifically handles 'overdue_task' notifications.
  */
-async function checkOverdueTasks() {
+async function checkOverdueTasks(now = new Date()) {
   try {
+    const overdueCutoff = getStartOfToday(now);
+
     // Find tasks that are past due date, not done/cancelled, have an assignee
-    const overdueTasks = await query(`
-      SELECT t.id, t.title, t.assignee_id, t.due_date, t.project_id, p.workspace_id, p.name as project_name
-      FROM tasks t
-      INNER JOIN projects p ON p.id = t.project_id
-      WHERE t.status NOT IN ('done', 'cancelled')
-        AND t.due_date IS NOT NULL
-        AND t.due_date < CURRENT_DATE()
-        AND t.assignee_id IS NOT NULL
-        -- Ensure we haven't already sent an overdue notification for this specific task to this user
-        AND NOT EXISTS (
-          SELECT 1 FROM notifications n 
-          WHERE n.related_task_id = t.id 
-            AND n.user_id = t.assignee_id 
-            AND n.type = 'task_overdue'
-        )
-    `);
+    const overdueTasks = await prisma.task.findMany({
+      where: {
+        status: { notIn: ['done', 'cancelled'] },
+        dueDate: {
+          not: null,
+          lt: overdueCutoff
+        },
+        assigneeId: { not: null },
+        // Ensure we haven't already sent an overdue notification for this specific task
+        notifications: {
+          none: {
+            type: 'task_overdue'
+          }
+        }
+      },
+      select: {
+        id: true,
+        title: true,
+        assigneeId: true,
+        dueDate: true,
+        projectId: true,
+        project: {
+          select: {
+            workspaceId: true,
+            name: true
+          }
+        }
+      }
+    });
 
     for (const task of overdueTasks) {
-      // Create notification
-      const result = await query(`
-        INSERT INTO notifications (user_id, type, title, message, related_workspace_id, related_project_id, related_task_id)
-        VALUES (?, 'task_overdue', ?, ?, ?, ?, ?)
-      `, [
-        task.assignee_id,
-        `Task Overdue: ${task.title}`,
-        `This task was due on ${new Date(task.due_date).toLocaleDateString()}`,
-        task.workspace_id,
-        task.project_id,
-        task.id
-      ]);
+      // Create notification and fetch linked workspace/project names
+      const newNotif = await prisma.notification.create({
+        data: {
+          userId: task.assigneeId,
+          type: 'task_overdue',
+          title: `Task Overdue: ${task.title}`,
+          message: `This task was due on ${new Date(task.dueDate).toLocaleDateString()}`,
+          relatedWorkspaceId: task.project.workspaceId,
+          relatedProjectId: task.projectId,
+          relatedTaskId: task.id
+        },
+        include: {
+          relatedWorkspace: {
+            select: { name: true }
+          },
+          relatedProject: {
+            select: { name: true }
+          }
+        }
+      });
+
+      // Map to expected snake_case layout for SSE broadcast
+      const mappedNotif = {
+        id: newNotif.id,
+        user_id: newNotif.userId,
+        type: newNotif.type,
+        title: newNotif.title,
+        message: newNotif.message,
+        related_workspace_id: newNotif.relatedWorkspaceId,
+        related_project_id: newNotif.relatedProjectId,
+        related_task_id: newNotif.relatedTaskId,
+        is_read: newNotif.isRead,
+        read_at: newNotif.readAt,
+        created_at: newNotif.createdAt,
+        workspace_name: newNotif.relatedWorkspace?.name || null,
+        project_name: newNotif.relatedProject?.name || null,
+        task_title: task.title
+      };
 
       // Broadcast via SSE if the user is currently online
-      const newNotif = await query(`
-        SELECT n.*, w.name as workspace_name, p.name as project_name, ? as task_title
-        FROM notifications n
-        LEFT JOIN workspaces w ON n.related_workspace_id = w.id
-        LEFT JOIN projects p ON n.related_project_id = p.id
-        WHERE n.id = ?
-      `, [task.title, result.insertId]);
-
-      if (newNotif[0]) {
-        sseManager.broadcastToUser(task.assignee_id, 'new_notification', newNotif[0]);
-      }
+      sseManager.broadcastToUser(task.assigneeId, 'new_notification', mappedNotif);
     }
 
     if (overdueTasks.length > 0) {
@@ -76,5 +113,7 @@ function startCronJobs() {
 }
 
 module.exports = {
+  checkOverdueTasks,
+  getStartOfToday,
   startCronJobs
 };

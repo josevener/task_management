@@ -1,115 +1,170 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-
 const crypto = require('crypto');
 const { env } = require('../config/env');
-const { query, withTransaction, getExistingColumns } = require('../config/database');
+const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
-const { buildUpdateClause } = require('../utils/validation');
 const { sendMail } = require('../utils/mailer');
+const { createRoleWithPermissions } = require('../utils/rbac');
 
 const workspacesRouter = express.Router();
-
 workspacesRouter.use(attachCurrentUser, requireAuth);
 
-async function getOrganizationWorkspaceSelect() {
-  const orgColumns = await getExistingColumns('organizations', [
-    'default_language',
-    'timezone',
-    'date_format',
-    'time_format'
-  ]);
-
-  const optionalFields = [
-    'default_language',
-    'timezone',
-    'date_format',
-    'time_format'
-  ].map((column) => (
-    orgColumns.has(column) ? `o.${column}` : `NULL AS ${column}`
-  ));
-
-  return `
-    o.name AS organization_name,
-    ${optionalFields.join(',\n           ')}
-  `;
+function mapWorkspace(w, currentUserId) {
+  if (!w) return null;
+  const userMember = w.members?.find(m => m.userId === currentUserId) || w.members?.[0] || {};
+  return {
+    id: w.id,
+    organization_id: w.organizationId,
+    name: w.name,
+    slug: w.slug,
+    description: w.description,
+    logo_url: w.logoUrl,
+    color_theme: w.colorTheme,
+    created_at: w.createdAt,
+    updated_at: w.updatedAt,
+    organization_name: w.organization?.name || null,
+    default_language: w.organization?.defaultLanguage || null,
+    timezone: w.organization?.timezone || null,
+    date_format: w.organization?.dateFormat || null,
+    time_format: w.organization?.timeFormat || null,
+    user_role: userMember.roleObj?.name || userMember.role || 'member',
+    user_role_id: userMember.roleId || null
+  };
 }
 
 async function canCreateWorkspaceInOrganization(organizationId, userId) {
-  const accessRows = await query(`
-    SELECT DISTINCT o.id
-    FROM organizations o
-    INNER JOIN workspaces w ON w.organization_id = o.id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    LEFT JOIN role_permissions rp ON rp.role_id = wm.role_id
-    LEFT JOIN permissions p ON p.id = rp.permission_id AND p.action = 'workspaces:create'
-    WHERE o.id = ?
-      AND wm.user_id = ?
-      AND (o.owner_id = ? OR LOWER(COALESCE(wm.role, '')) = 'admin' OR p.id IS NOT NULL)
-    LIMIT 1
-  `, [organizationId, userId, userId]);
+  const org = await prisma.organization.findUnique({
+    where: { id: parseInt(organizationId, 10) },
+    select: { ownerId: true }
+  });
 
-  return Boolean(accessRows[0]);
+  if (org && org.ownerId === parseInt(userId, 10)) {
+    return true;
+  }
+
+  const count = await prisma.workspaceMember.count({
+    where: {
+      userId: parseInt(userId, 10),
+      workspace: {
+        organizationId: parseInt(organizationId, 10)
+      },
+      OR: [
+        { role: { equals: 'Admin', mode: 'insensitive' } },
+        {
+          roleObj: {
+            rolePermissions: {
+              some: {
+                permission: {
+                  action: 'workspaces:create'
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  });
+
+  return count > 0;
 }
 
 workspacesRouter.get('/', asyncHandler(async (req, res) => {
-  const params = [req.currentUser.id];
-  let sql = `
-    SELECT w.id, w.organization_id, w.name, w.slug, w.description,
-           w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           o.name AS organization_name,
-           r.name AS user_role, r.id AS user_role_id
-    FROM workspaces w
-    INNER JOIN organizations o ON o.id = w.organization_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    LEFT JOIN roles r ON r.id = wm.role_id
-    WHERE wm.user_id = ? AND w.is_active = TRUE
-  `;
+  const whereClause = {
+    isActive: true,
+    members: {
+      some: {
+        userId: req.currentUser.id
+      }
+    }
+  };
 
   if (req.query.organization_id) {
-    sql += ' AND w.organization_id = ?';
-    params.push(req.query.organization_id);
+    whereClause.organizationId = parseInt(req.query.organization_id, 10);
   }
 
-  sql += ' ORDER BY w.created_at DESC';
-  const workspaces = await query(sql, params);
-  return sendSuccess(res, { workspaces });
+  const workspaces = await prisma.workspace.findMany({
+    where: whereClause,
+    include: {
+      organization: {
+        select: { name: true }
+      },
+      members: {
+        where: { userId: req.currentUser.id },
+        include: {
+          roleObj: {
+            select: { name: true }
+          }
+        }
+      }
+    },
+    orderBy: {
+      createdAt: 'desc'
+    }
+  });
+
+  const mappedWorkspaces = workspaces.map(w => mapWorkspace(w, req.currentUser.id));
+  return sendSuccess(res, { workspaces: mappedWorkspaces });
 }));
 
 workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
-  const organizationSelect = await getOrganizationWorkspaceSelect();
-  const rows = await query(`
-    SELECT w.id, w.organization_id, w.name, w.slug, w.description,
-           w.logo_url, w.color_theme, w.created_at, w.updated_at,
-           ${organizationSelect},
-           r.name AS user_role, r.id AS user_role_id, r.is_system_role
-    FROM workspaces w
-    INNER JOIN organizations o ON o.id = w.organization_id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    LEFT JOIN roles r ON r.id = wm.role_id
-    WHERE w.id = ? AND wm.user_id = ? AND w.is_active = TRUE
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const w = await prisma.workspace.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      isActive: true,
+      members: {
+        some: {
+          userId: req.currentUser.id
+        }
+      }
+    },
+    include: {
+      organization: {
+        select: {
+          name: true,
+          defaultLanguage: true,
+          timezone: true,
+          dateFormat: true,
+          timeFormat: true
+        }
+      },
+      members: {
+        where: { userId: req.currentUser.id },
+        include: {
+          roleObj: {
+            select: {
+              id: true,
+              name: true,
+              isSystemRole: true
+            }
+          }
+        }
+      }
+    }
+  });
 
-  if (!rows[0]) {
+  if (!w) {
     return sendError(res, 'Workspace not found or access denied', 404);
   }
 
-  const workspace = rows[0];
+  const workspace = mapWorkspace(w, req.currentUser.id);
+  const userMember = w.members?.[0];
   let permissions = [];
 
-  if (workspace.user_role_id) {
-    const permRows = await query(`
-      SELECT p.action
-      FROM role_permissions rp
-      JOIN permissions p ON p.id = rp.permission_id
-      WHERE rp.role_id = ?
-    `, [workspace.user_role_id]);
+  if (userMember && userMember.roleId) {
+    const permRows = await prisma.rolePermission.findMany({
+      where: { roleId: userMember.roleId },
+      select: {
+        permission: {
+          select: { action: true }
+        }
+      }
+    });
 
-    permissions = permRows.map(p => p.action);
+    permissions = permRows.map(p => p.permission.action);
   }
 
   return sendSuccess(res, {
@@ -138,16 +193,23 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
     errors.slug = 'Slug can only contain lowercase letters, numbers, and hyphens';
   }
 
-  const orgAccess = organization_id ? await query(`
-    SELECT o.id
-    FROM organizations o
-    INNER JOIN workspaces w ON w.organization_id = o.id
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE o.id = ? AND wm.user_id = ? AND o.is_active = TRUE
-    LIMIT 1
-  `, [organization_id, req.currentUser.id]) : [];
+  const orgAccessCount = organization_id ? await prisma.organization.count({
+    where: {
+      id: parseInt(organization_id, 10),
+      isActive: true,
+      workspaces: {
+        some: {
+          members: {
+            some: {
+              userId: req.currentUser.id
+            }
+          }
+        }
+      }
+    }
+  }) : 0;
 
-  if (organization_id && !orgAccess[0]) {
+  if (organization_id && orgAccessCount === 0) {
     errors.organization_id = 'Organization not found or access denied';
   }
 
@@ -160,83 +222,94 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
     return sendError(res, 'You do not have permission to create workspaces in this organization', 403);
   }
 
-  const existing = await query(`
-    SELECT id FROM workspaces WHERE organization_id = ? AND slug = ?
-  `, [organization_id, slug]);
+  const existing = await prisma.workspace.findFirst({
+    where: {
+      organizationId: parseInt(organization_id, 10),
+      slug
+    }
+  });
 
-  if (existing.length > 0) {
+  if (existing) {
     return sendValidationError(res, { slug: 'This slug is already taken in this organization' });
   }
 
-  const workspace = await withTransaction(async (connection) => {
-    const [insertResult] = await connection.execute(`
-      INSERT INTO workspaces (organization_id, name, slug, description, color_theme)
-      VALUES (?, ?, ?, ?, ?)
-    `, [organization_id, name, slug, description || null, color_theme]);
-
-    const workspaceId = insertResult.insertId;
+  const workspace = await prisma.$transaction(async (tx) => {
+    const newWs = await tx.workspace.create({
+      data: {
+        organizationId: parseInt(organization_id, 10),
+        name,
+        slug,
+        description: description || null,
+        colorTheme: color_theme
+      }
+    });
 
     // 1. Provision Default Roles
     const defaultRoles = [
-      ['Admin', 'Full administrative access', true],
-      ['Manager', 'Can manage projects, tasks, and members.', true],
-      ['Member', 'Can create and manage tasks.', true],
-      ['Guest', 'View-only access.', true]
+      { name: 'Admin', description: 'Full administrative access', isSystemRole: true },
+      { name: 'Manager', description: 'Can manage projects, tasks, and members.', isSystemRole: true },
+      { name: 'Member', description: 'Can create and manage tasks.', isSystemRole: true },
+      { name: 'Guest', description: 'View-only access.', isSystemRole: true }
     ];
 
     const roleIds = {};
-    for (const [rName, rDesc, isSystem] of defaultRoles) {
-      const [rResult] = await connection.execute(
-        'INSERT INTO roles (workspace_id, name, description, is_system_role) VALUES (?, ?, ?, ?)',
-        [workspaceId, rName, rDesc, isSystem]
-      );
-      roleIds[rName] = rResult.insertId;
+    for (const rDef of defaultRoles) {
+      const newRole = await createRoleWithPermissions(tx, {
+        workspaceId: newWs.id,
+        name: rDef.name,
+        description: rDef.description,
+        isSystemRole: rDef.isSystemRole
+      });
+      roleIds[rDef.name] = newRole.id;
     }
 
-    // 2. Grant Permissions to Admin Role
-    const [permissions] = await connection.execute('SELECT id FROM permissions');
-    if (permissions.length > 0) {
-      const values = permissions.map(p => `(${roleIds['Admin']}, ${p.id})`).join(', ');
-      await connection.execute(`
-        INSERT INTO role_permissions (role_id, permission_id)
-        VALUES ${values}
-      `);
-    }
+    // 2. Add user as Admin member
+    await tx.workspaceMember.create({
+      data: {
+        workspaceId: newWs.id,
+        userId: req.currentUser.id,
+        roleId: roleIds['Admin'],
+        role: 'Admin'
+      }
+    });
 
-    // 3. Add user as Admin member
-    await connection.execute(`
-      INSERT INTO workspace_members (workspace_id, user_id, role_id, role)
-      VALUES (?, ?, ?, 'Admin')
-    `, [workspaceId, req.currentUser.id, roleIds['Admin']]);
+    const fullWs = await tx.workspace.findUnique({
+      where: { id: newWs.id },
+      include: {
+        organization: { select: { name: true } }
+      }
+    });
 
-    const [rows] = await connection.execute(`
-      SELECT w.id, w.organization_id, w.name, w.slug, w.description,
-             w.logo_url, w.color_theme, w.created_at, w.updated_at,
-             o.name AS organization_name,
-             r.name AS user_role, r.id AS user_role_id
-      FROM workspaces w
-      INNER JOIN organizations o ON o.id = w.organization_id
-      INNER JOIN roles r ON r.id = ?
-      WHERE w.id = ?
-    `, [roleIds['Admin'], workspaceId]);
-
-    return rows[0];
+    return {
+      id: fullWs.id,
+      organization_id: fullWs.organizationId,
+      name: fullWs.name,
+      slug: fullWs.slug,
+      description: fullWs.description,
+      logo_url: fullWs.logoUrl,
+      color_theme: fullWs.colorTheme,
+      created_at: fullWs.createdAt,
+      updated_at: fullWs.updatedAt,
+      organization_name: fullWs.organization.name,
+      user_role: 'Admin',
+      user_role_id: roleIds['Admin']
+    };
   });
 
   return sendSuccess(res, { workspace }, 201);
 }));
 
 workspacesRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const isMember = await query(`
-    SELECT w.id, w.organization_id
-    FROM workspaces w
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE w.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: parseInt(req.params.id, 10),
+      members: {
+        some: { userId: req.currentUser.id }
+      }
+    }
+  });
 
-  const existingWorkspace = isMember[0];
-  if (!existingWorkspace) {
+  if (!workspace) {
     return sendError(res, 'Workspace not found or access denied', 404);
   }
 
@@ -245,52 +318,72 @@ workspacesRouter.patch('/:id', asyncHandler(async (req, res) => {
     return sendError(res, 'You do not have permission to edit this workspace', 403);
   }
 
-  const input = { ...req.body };
-  if (Object.prototype.hasOwnProperty.call(input, 'name') && !String(input.name || '').trim()) {
-    return sendValidationError(res, { name: 'Workspace name cannot be empty' });
+  const data = {};
+  if (Object.prototype.hasOwnProperty.call(req.body, 'name')) {
+    const nameVal = String(req.body.name || '').trim();
+    if (!nameVal) return sendValidationError(res, { name: 'Workspace name cannot be empty' });
+    data.name = nameVal;
   }
 
-  if (Object.prototype.hasOwnProperty.call(input, 'slug')) {
-    input.slug = createSlug(input.slug);
-    if (!input.slug) {
-      return sendValidationError(res, { slug: 'Slug cannot be empty' });
-    }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'slug')) {
+    const slugVal = createSlug(req.body.slug);
+    if (!slugVal) return sendValidationError(res, { slug: 'Slug cannot be empty' });
 
-    const slugRows = await query(`
-      SELECT id FROM workspaces
-      WHERE slug = ? AND organization_id = ? AND id != ?
-    `, [input.slug, existingWorkspace.organization_id, req.params.id]);
+    const slugExists = await prisma.workspace.findFirst({
+      where: {
+        slug: slugVal,
+        organizationId: workspace.organizationId,
+        id: { not: parseInt(req.params.id, 10) }
+      }
+    });
 
-    if (slugRows.length > 0) {
+    if (slugExists) {
       return sendValidationError(res, { slug: 'Slug must be unique within the organization' });
     }
+    data.slug = slugVal;
   }
 
-  const { updates, params } = buildUpdateClause(input, ['name', 'slug', 'description', 'color_theme', 'logo_url']);
-  if (updates.length === 0) {
-    return sendError(res, 'No fields to update', 400);
+  if (Object.prototype.hasOwnProperty.call(req.body, 'description')) {
+    data.description = String(req.body.description || '').trim() || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'color_theme')) {
+    data.colorTheme = req.body.color_theme;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'logo_url')) {
+    data.logoUrl = req.body.logo_url;
   }
 
-  await query(`
-    UPDATE workspaces
-    SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `, [...params, req.params.id]);
+  const updated = await prisma.workspace.update({
+    where: { id: parseInt(req.params.id, 10) },
+    data
+  });
 
-  const rows = await query('SELECT * FROM workspaces WHERE id = ?', [req.params.id]);
-  return sendSuccess(res, { workspace: rows[0] });
+  const mappedWorkspace = {
+    id: updated.id,
+    organization_id: updated.organizationId,
+    name: updated.name,
+    slug: updated.slug,
+    description: updated.description,
+    logo_url: updated.logoUrl,
+    color_theme: updated.colorTheme,
+    created_at: updated.createdAt,
+    updated_at: updated.updatedAt
+  };
+
+  return sendSuccess(res, { workspace: mappedWorkspace });
 }));
 
 workspacesRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const isMember = await query(`
-    SELECT w.id
-    FROM workspaces w
-    INNER JOIN workspace_members wm ON wm.workspace_id = w.id
-    WHERE w.id = ? AND wm.user_id = ?
-    LIMIT 1
-  `, [req.params.id, req.currentUser.id]);
+  const wCount = await prisma.workspace.count({
+    where: {
+      id: parseInt(req.params.id, 10),
+      members: {
+        some: { userId: req.currentUser.id }
+      }
+    }
+  });
 
-  if (!isMember[0]) {
+  if (wCount === 0) {
     return sendError(res, 'Workspace not found or access denied', 404);
   }
 
@@ -299,16 +392,22 @@ workspacesRouter.delete('/:id', asyncHandler(async (req, res) => {
     return sendError(res, 'You do not have permission to delete this workspace', 403);
   }
 
-  await query('DELETE FROM workspaces WHERE id = ?', [req.params.id]);
+  await prisma.workspace.delete({
+    where: { id: parseInt(req.params.id, 10) }
+  });
+
   return sendSuccess(res, { message: 'Workspace deleted successfully' });
 }));
 
 workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
-  const accessRows = await query(`
-    SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-  `, [req.params.workspaceId, req.currentUser.id]);
+  const accessCount = await prisma.workspaceMember.count({
+    where: {
+      workspaceId: parseInt(req.params.workspaceId, 10),
+      userId: req.currentUser.id
+    }
+  });
 
-  if (!accessRows[0]) {
+  if (accessCount === 0) {
     return sendError(res, 'Workspace access denied', 403);
   }
 
@@ -317,17 +416,34 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
     return sendError(res, 'You do not have permission to view workspace members', 403);
   }
 
-  const members = await query(`
-    SELECT wm.id AS membership_id, r.name AS role, wm.created_at,
-           u.id AS user_id, u.first_name, u.last_name, u.email
-    FROM workspace_members wm
-    INNER JOIN users u ON u.id = wm.user_id
-    LEFT JOIN roles r ON r.id = wm.role_id
-    WHERE wm.workspace_id = ?
-    ORDER BY wm.created_at ASC
-  `, [req.params.workspaceId]);
+  const members = await prisma.workspaceMember.findMany({
+    where: {
+      workspaceId: parseInt(req.params.workspaceId, 10)
+    },
+    include: {
+      user: {
+        select: { id: true, firstName: true, lastName: true, email: true }
+      },
+      roleObj: {
+        select: { name: true }
+      }
+    },
+    orderBy: {
+      createdAt: 'asc'
+    }
+  });
 
-  return sendSuccess(res, { members });
+  const mappedMembers = members.map(m => ({
+    membership_id: m.id,
+    role: m.roleObj?.name || m.role || 'member',
+    created_at: m.createdAt,
+    user_id: m.user.id,
+    first_name: m.user.firstName,
+    last_name: m.user.lastName,
+    email: m.user.email
+  }));
+
+  return sendSuccess(res, { members: mappedMembers });
 }));
 
 workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => {
@@ -338,13 +454,11 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 
   if (!email) {
     errors.email = 'Email is required';
-  }
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
   }
 
   const canInvite = await checkPermission(req.params.workspaceId, req.currentUser.id, 'members:invite');
-
   if (!canInvite) {
     errors.workspace_id = 'You do not have permission to add members to this workspace';
   }
@@ -362,54 +476,65 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     return sendValidationError(res, errors);
   }
 
-  // Check if already a member before proceeding with user creation/fetch
-  const existingMemberships = await query(`
-    SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = (SELECT id FROM users WHERE email = ?)
-  `, [req.params.workspaceId, email]);
+  const existingUser = await prisma.user.findUnique({
+    where: { email }
+  });
 
-  if (existingMemberships.length > 0) {
-    return sendValidationError(res, { email: 'User is already a member of this workspace' });
+  if (existingUser) {
+    const exists = await prisma.workspaceMember.count({
+      where: {
+        workspaceId: parseInt(req.params.workspaceId, 10),
+        userId: existingUser.id
+      }
+    });
+    if (exists > 0) {
+      return sendValidationError(res, { email: 'User is already a member of this workspace' });
+    }
   }
 
-  const workspaceRows = await query('SELECT name FROM workspaces WHERE id = ?', [req.params.workspaceId]);
-  const workspaceName = workspaceRows[0] ? workspaceRows[0].name : 'Workspace';
+  const workspaceObj = await prisma.workspace.findUnique({
+    where: { id: parseInt(req.params.workspaceId, 10) },
+    select: { name: true }
+  });
+  const workspaceName = workspaceObj ? workspaceObj.name : 'Workspace';
 
-  const member = await withTransaction(async (connection) => {
+  const member = await prisma.$transaction(async (tx) => {
     let user_id_to_add;
 
     if (action === 'create') {
-      const [existingUsers] = await connection.execute('SELECT id FROM users WHERE email = ?', [email]);
-      if (existingUsers[0]) {
+      if (existingUser) {
         const error = new Error('validation');
-        error.statusCode = 422;
         error.payload = { email: 'User with this email already exists in the system.' };
         throw error;
       }
 
-      // Generate a truly random temporary password
       const tempPassword = crypto.randomBytes(12).toString('hex') + '!';
       const password_hash = await bcrypt.hash(tempPassword, 10);
 
-      const [userResult] = await connection.execute(`
-        INSERT INTO users (email, password_hash, first_name, last_name, is_active)
-        VALUES (?, ?, ?, ?, FALSE)
-      `, [email, password_hash, String(req.body.first_name).trim(), String(req.body.last_name).trim()]);
-      user_id_to_add = userResult.insertId;
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          passwordHash: password_hash,
+          firstName: String(req.body.first_name).trim(),
+          lastName: String(req.body.last_name).trim(),
+          isActive: false
+        }
+      });
+      user_id_to_add = newUser.id;
 
-      // Token Generation
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 48); // 48 hours expiry for invitations
+      expiresAt.setHours(expiresAt.getHours() + 48);
 
-      await connection.execute(`
-        INSERT INTO email_verification_tokens (email, token, expires_at)
-        VALUES (?, ?, ?)
-      `, [email, token, expiresAt]);
+      await tx.emailVerificationToken.create({
+        data: {
+          email,
+          token,
+          expiresAt
+        }
+      });
 
-      // Verification Link
       const verifyLink = `${env.appOrigin}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
-
-      // Verification Email
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
           <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
@@ -422,24 +547,21 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This link will expire in 48 hours.</p>
         </div>
       `;
+
       await sendMail({
         to: email,
         subject: `Zentrix - Invitation to ${workspaceName}`,
         html: htmlContent
       });
-
-    }
-    else {
-      const [users] = await connection.execute('SELECT id, first_name FROM users WHERE email = ?', [email]);
-      if (!users[0]) {
+    } else {
+      if (!existingUser) {
         const error = new Error('No user found with that email address. They must register first.');
         error.statusCode = 400;
         throw error;
       }
-      user_id_to_add = users[0].id;
-      const userName = users[0].first_name;
+      user_id_to_add = existingUser.id;
+      const userName = existingUser.firstName;
 
-      // Notification Email for existing user
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
           <h2 style="color: #4f46e5;">New Workspace Added!</h2>
@@ -459,37 +581,56 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       });
     }
 
-    // Double check membership within transaction to avoid race conditions
-    const [finalMembershipCheck] = await connection.execute(`
-      SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-    `, [req.params.workspaceId, user_id_to_add]);
+    const innerCheck = await tx.workspaceMember.findFirst({
+      where: {
+        workspaceId: parseInt(req.params.workspaceId, 10),
+        userId: user_id_to_add
+      }
+    });
 
-    if (finalMembershipCheck[0]) {
+    if (innerCheck) {
       const error = new Error('User is already a member of this workspace');
       error.statusCode = 409;
       throw error;
     }
 
-    const [membershipResult] = await connection.execute(`
-      INSERT INTO workspace_members (workspace_id, user_id, role_id)
-      VALUES (?, ?, 
-        CASE 
-          WHEN ? REGEXP '^[0-9]+$' THEN ?
-          ELSE (SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?) LIMIT 1)
-        END
-      )
-    `, [req.params.workspaceId, user_id_to_add, role, role, req.params.workspaceId, role]);
+    let roleIdToAssign = null;
+    if (/^[0-9]+$/.test(role)) {
+      roleIdToAssign = parseInt(role, 10);
+    } else {
+      const roleRow = await tx.role.findFirst({
+        where: {
+          workspaceId: parseInt(req.params.workspaceId, 10),
+          name: { equals: role }
+        }
+      });
+      if (roleRow) {
+        roleIdToAssign = roleRow.id;
+      }
+    }
 
-    const [rows] = await connection.execute(`
-      SELECT wm.id AS membership_id, r.name AS role, wm.created_at,
-             u.id AS user_id, u.first_name, u.last_name, u.email
-      FROM workspace_members wm
-      INNER JOIN users u ON u.id = wm.user_id
-      LEFT JOIN roles r ON r.id = wm.role_id
-      WHERE wm.id = ?
-    `, [membershipResult.insertId]);
+    const newMember = await tx.workspaceMember.create({
+      data: {
+        workspaceId: parseInt(req.params.workspaceId, 10),
+        userId: user_id_to_add,
+        roleId: roleIdToAssign,
+        role: /^[0-9]+$/.test(role) ? 'member' : role
+      },
+      include: {
+        user: true,
+        roleObj: true
+      }
+    });
 
-    return rows[0];
+    return {
+      membership_id: newMember.id,
+      role: newMember.roleObj?.name || newMember.role || 'member',
+      created_at: newMember.createdAt,
+      user_id: newMember.user.id,
+      first_name: newMember.user.firstName,
+      last_name: newMember.user.lastName,
+      email: newMember.user.email
+    };
   }).catch((error) => {
     if (error.payload) {
       return sendValidationError(res, error.payload);
@@ -510,39 +651,39 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => {
   const { role_id, first_name, last_name, email } = req.body;
 
-  const targetRows = await query(`
-    SELECT wm.workspace_id, wm.user_id, r.name AS role_name, r.is_system_role 
-    FROM workspace_members wm 
-    LEFT JOIN roles r ON r.id = wm.role_id
-    WHERE wm.id = ?
-  `, [req.params.membershipId]);
+  const targetMember = await prisma.workspaceMember.findUnique({
+    where: { id: parseInt(req.params.membershipId, 10) },
+    include: { roleObj: true }
+  });
 
-  const targetMember = targetRows[0];
   if (!targetMember) {
     return sendError(res, 'Membership not found', 404);
   }
 
-  const canManageRoles = await checkPermission(targetMember.workspace_id, req.currentUser.id, 'members:manage_roles');
+  const canManageRoles = await checkPermission(targetMember.workspaceId, req.currentUser.id, 'members:manage_roles');
   if (!canManageRoles) {
     return sendError(res, 'You do not have permission to edit member details in this workspace', 403);
   }
 
   const errors = {};
 
-  // Check role update logic
   if (role_id) {
-    const newRoleRows = await query('SELECT name FROM roles WHERE id = ?', [role_id]);
-    if (!newRoleRows[0]) {
-      errors.role_id = 'The selected role does not exist';
-    } else if (targetMember.role_name === 'Admin' && newRoleRows[0].name !== 'Admin') {
-      const adminRows = await query(`
-        SELECT COUNT(*) AS admin_count
-        FROM workspace_members wm
-        JOIN roles r ON r.id = wm.role_id
-        WHERE wm.workspace_id = ? AND r.name = 'Admin' AND wm.user_id != ?
-      `, [targetMember.workspace_id, targetMember.user_id]);
+    const newRole = await prisma.role.findUnique({
+      where: { id: parseInt(role_id, 10) }
+    });
 
-      if (Number(adminRows[0].admin_count) === 0) {
+    if (!newRole) {
+      errors.role_id = 'The selected role does not exist';
+    } else if (targetMember.roleObj?.name === 'Admin' && newRole.name !== 'Admin') {
+      const otherAdminsCount = await prisma.workspaceMember.count({
+        where: {
+          workspaceId: targetMember.workspaceId,
+          roleObj: { name: 'Admin' },
+          userId: { not: targetMember.userId }
+        }
+      });
+
+      if (otherAdminsCount === 0) {
         errors.role_id = 'Cannot demote the last administrator. Promote someone else first.';
       }
     }
@@ -556,60 +697,60 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
     return sendValidationError(res, errors);
   }
 
-  await withTransaction(async (connection) => {
-    if (role_id) {
-      await connection.execute('UPDATE workspace_members SET role_id = ? WHERE id = ?', [role_id, req.params.membershipId]);
-    }
-
-  });
+  if (role_id) {
+    await prisma.workspaceMember.update({
+      where: { id: parseInt(req.params.membershipId, 10) },
+      data: { roleId: parseInt(role_id, 10) }
+    });
+  }
 
   return sendSuccess(res, { message: 'Member details updated successfully' });
 }));
 
 workspacesRouter.delete('/members/:membershipId', asyncHandler(async (req, res) => {
-  const targetRows = await query(`
-    SELECT wm.workspace_id, wm.user_id, r.name AS role_name, r.is_system_role 
-    FROM workspace_members wm 
-    LEFT JOIN roles r ON r.id = wm.role_id
-    WHERE wm.id = ?
-  `, [req.params.membershipId]);
+  const targetMember = await prisma.workspaceMember.findUnique({
+    where: { id: parseInt(req.params.membershipId, 10) },
+    include: { roleObj: true }
+  });
 
-  const targetMember = targetRows[0];
   if (!targetMember) {
     return sendError(res, 'Membership not found', 404);
   }
 
-  if (Number(targetMember.user_id) !== Number(req.currentUser.id)) {
-    const canRemove = await checkPermission(targetMember.workspace_id, req.currentUser.id, 'members:remove');
+  if (Number(targetMember.userId) !== Number(req.currentUser.id)) {
+    const canRemove = await checkPermission(targetMember.workspaceId, req.currentUser.id, 'members:remove');
 
     if (!canRemove) {
       return sendError(res, 'You do not have permission to remove members from this workspace', 403);
     }
   }
 
-  if (targetMember.role_name === 'Admin') {
-    const adminRows = await query(`
-      SELECT COUNT(*) AS admin_count
-      FROM workspace_members wm
-      JOIN roles r ON r.id = wm.role_id
-      WHERE wm.workspace_id = ? AND r.name = 'Admin'
-    `, [targetMember.workspace_id]);
+  if (targetMember.roleObj?.name === 'Admin') {
+    const adminCount = await prisma.workspaceMember.count({
+      where: {
+        workspaceId: targetMember.workspaceId,
+        roleObj: { name: 'Admin' }
+      }
+    });
 
-    if (Number(adminRows[0].admin_count) <= 1) {
+    if (adminCount <= 1) {
       return sendError(res, 'Cannot remove the last administrator. Promote someone else first.', 400);
     }
   }
 
-  await withTransaction(async (connection) => {
-    // Removing the member's workspace-scoped project memberships prevents stale ownership access.
-    await connection.execute(`
-      DELETE pm
-      FROM project_members pm
-      INNER JOIN projects p ON p.id = pm.project_id
-      WHERE p.workspace_id = ? AND pm.user_id = ?
-    `, [targetMember.workspace_id, targetMember.user_id]);
+  await prisma.$transaction(async (tx) => {
+    await tx.projectMember.deleteMany({
+      where: {
+        userId: targetMember.userId,
+        project: {
+          workspaceId: targetMember.workspaceId
+        }
+      }
+    });
 
-    await connection.execute('DELETE FROM workspace_members WHERE id = ?', [req.params.membershipId]);
+    await tx.workspaceMember.delete({
+      where: { id: parseInt(req.params.membershipId, 10) }
+    });
   });
 
   return sendSuccess(res, { message: 'Member removed successfully' });

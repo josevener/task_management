@@ -1,5 +1,5 @@
 const express = require('express');
-const { query, withTransaction } = require('../config/database');
+const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
@@ -13,26 +13,37 @@ async function hasRolePermission(workspaceId, userId, actions) {
     return false;
   }
 
-  const placeholders = requestedActions.map(() => '?').join(', ');
-  const rows = await query(`
-    SELECT rp.permission_id 
-    FROM workspace_members wm
-    INNER JOIN role_permissions rp ON rp.role_id = wm.role_id
-    INNER JOIN permissions p ON p.id = rp.permission_id
-    WHERE wm.workspace_id = ? AND wm.user_id = ? AND p.action IN (${placeholders})
-    LIMIT 1
-  `, [workspaceId, userId, ...requestedActions]);
+  const count = await prisma.workspaceMember.count({
+    where: {
+      workspaceId: parseInt(workspaceId, 10),
+      userId: parseInt(userId, 10),
+      roleObj: {
+        rolePermissions: {
+          some: {
+            permission: {
+              action: { in: requestedActions }
+            }
+          }
+        }
+      }
+    }
+  });
   
-  return rows.length > 0;
+  return count > 0;
 }
 
 const getRoleInWorkspace = async (workspaceId, roleId) => {
-  const rows = await query(
-    'SELECT id, name, workspace_id FROM roles WHERE id = ? AND workspace_id = ? LIMIT 1',
-    [roleId, workspaceId]
-  );
-
-  return rows[0] || null;
+  return prisma.role.findFirst({
+    where: {
+      id: parseInt(roleId, 10),
+      workspaceId: parseInt(workspaceId, 10)
+    },
+    select: {
+      id: true,
+      name: true,
+      workspaceId: true
+    }
+  });
 };
 
 // GET /workspaces/:workspaceId/roles
@@ -43,16 +54,36 @@ rolesRouter.get('/workspaces/:workspaceId/roles', asyncHandler(async (req, res) 
   const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:view', 'roles:manage']);
   if (!hasPerm) return sendError(res, 'You do not have permission to view roles', 403);
 
-  const roles = await query(`
-    SELECT r.id, r.name, r.description, r.is_system_role, COUNT(wm.id) as default_user_count
-    FROM roles r
-    LEFT JOIN workspace_members wm ON wm.role_id = r.id
-    WHERE r.workspace_id = ?
-    GROUP BY r.id
-    ORDER BY r.is_system_role DESC, r.name ASC
-  `, [workspaceId]);
+  const roles = await prisma.role.findMany({
+    where: {
+      workspaceId: parseInt(workspaceId, 10)
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      isSystemRole: true,
+      _count: {
+        select: {
+          members: true
+        }
+      }
+    },
+    orderBy: [
+      { isSystemRole: 'desc' },
+      { name: 'asc' }
+    ]
+  });
 
-  return sendSuccess(res, { roles });
+  const mappedRoles = roles.map(r => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    is_system_role: r.isSystemRole,
+    default_user_count: r._count.members
+  }));
+
+  return sendSuccess(res, { roles: mappedRoles });
 }));
 
 // POST /workspaces/:workspaceId/roles (Create)
@@ -66,17 +97,36 @@ rolesRouter.post('/workspaces/:workspaceId/roles', asyncHandler(async (req, res)
   if (!name || name.trim() === '') return sendValidationError(res, { name: 'Role name is required' });
 
   // Check unique name
-  const existingRows = await query('SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?)', [workspaceId, name.trim()]);
-  if (existingRows[0]) return sendError(res, 'A role with this name already exists in the workspace', 400);
+  const existing = await prisma.role.findFirst({
+    where: {
+      workspaceId: parseInt(workspaceId, 10),
+      name: {
+        equals: name.trim()
+      }
+    }
+  });
+  if (existing) return sendError(res, 'A role with this name already exists in the workspace', 400);
 
-  const result = await query(
-    'INSERT INTO roles (workspace_id, name, description, is_system_role) VALUES (?, ?, ?, false)',
-    [workspaceId, name.trim(), description || null]
-  );
+  const newRole = await prisma.role.create({
+    data: {
+      workspaceId: parseInt(workspaceId, 10),
+      name: name.trim(),
+      description: description || null,
+      isSystemRole: false
+    }
+  });
 
-  const newRoleRows = await query('SELECT * FROM roles WHERE id = ?', [result.insertId]);
+  const mappedRole = {
+    id: newRole.id,
+    workspace_id: newRole.workspaceId,
+    name: newRole.name,
+    description: newRole.description,
+    is_system_role: newRole.isSystemRole,
+    created_at: newRole.createdAt,
+    updated_at: newRole.updatedAt
+  };
   
-  return sendSuccess(res, { role: newRoleRows[0] }, 201);
+  return sendSuccess(res, { role: mappedRole }, 201);
 }));
 
 // PUT /workspaces/:workspaceId/roles/:roleId (Update)
@@ -87,24 +137,56 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async (re
   const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:edit', 'roles:manage']);
   if (!hasPerm) return sendError(res, 'You do not have permission to edit roles', 403);
 
-  const rows = await query('SELECT * FROM roles WHERE id = ? AND workspace_id = ?', [roleId, workspaceId]);
-  if (!rows[0]) return sendError(res, 'Role not found', 404);
-  if (rows[0].is_system_role && name && name.trim() !== rows[0].name) {
+  const role = await prisma.role.findFirst({
+    where: {
+      id: parseInt(roleId, 10),
+      workspaceId: parseInt(workspaceId, 10)
+    }
+  });
+  if (!role) return sendError(res, 'Role not found', 404);
+  if (role.isSystemRole && name && name.trim() !== role.name) {
     return sendError(res, 'Cannot rename system roles', 400);
   }
 
-  const finalName = rows[0].is_system_role ? rows[0].name : (name ? name.trim() : rows[0].name);
+  const finalName = role.isSystemRole ? role.name : (name ? name.trim() : role.name);
 
   // Check unique name if changing
-  if (!rows[0].is_system_role && name && name.trim().toLowerCase() !== rows[0].name.toLowerCase()) {
-    const existingRows = await query('SELECT id FROM roles WHERE workspace_id = ? AND LOWER(name) = LOWER(?) AND id != ?', [workspaceId, finalName, roleId]);
-    if (existingRows[0]) return sendError(res, 'A role with this name already exists', 400);
+  if (!role.isSystemRole && name && name.trim().toLowerCase() !== role.name.toLowerCase()) {
+    const existing = await prisma.role.findFirst({
+      where: {
+        workspaceId: parseInt(workspaceId, 10),
+        name: {
+          equals: finalName
+        },
+        id: {
+          not: parseInt(roleId, 10)
+        }
+      }
+    });
+    if (existing) return sendError(res, 'A role with this name already exists', 400);
   }
 
-  await query('UPDATE roles SET name = ?, description = ? WHERE id = ?', [finalName, description || null, roleId]);
+  const updatedRole = await prisma.role.update({
+    where: {
+      id: parseInt(roleId, 10)
+    },
+    data: {
+      name: finalName,
+      description: description !== undefined ? (description || null) : undefined
+    }
+  });
+
+  const mappedRole = {
+    id: updatedRole.id,
+    workspace_id: updatedRole.workspaceId,
+    name: updatedRole.name,
+    description: updatedRole.description,
+    is_system_role: updatedRole.isSystemRole,
+    created_at: updatedRole.createdAt,
+    updated_at: updatedRole.updatedAt
+  };
   
-  const updatedRoleRows = await query('SELECT * FROM roles WHERE id = ?', [roleId]);
-  return sendSuccess(res, { role: updatedRoleRows[0] });
+  return sendSuccess(res, { role: mappedRole });
 }));
 
 // DELETE /workspaces/:workspaceId/roles/:roleId
@@ -115,22 +197,48 @@ rolesRouter.delete('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async 
   const hasPerm = await hasRolePermission(workspaceId, req.currentUser.id, ['roles:delete', 'roles:manage']);
   if (!hasPerm) return sendError(res, 'You do not have permission to delete roles', 403);
 
-  const rows = await query('SELECT * FROM roles WHERE id = ? AND workspace_id = ?', [roleId, workspaceId]);
-  if (!rows[0]) return sendError(res, 'Role not found', 404);
-  if (rows[0].is_system_role) return sendError(res, 'Cannot delete system roles', 400);
+  const role = await prisma.role.findFirst({
+    where: {
+      id: parseInt(roleId, 10),
+      workspaceId: parseInt(workspaceId, 10)
+    }
+  });
+  if (!role) return sendError(res, 'Role not found', 404);
+  if (role.isSystemRole) return sendError(res, 'Cannot delete system roles', 400);
 
-  await withTransaction(async (connection) => {
-    if (fallback_role_id) {
-       await connection.execute('UPDATE workspace_members SET role_id = ? WHERE role_id = ? AND workspace_id = ?', [fallback_role_id, roleId, workspaceId]);
-    } else {
+  await prisma.$transaction(async (tx) => {
+    let targetRoleId = fallback_role_id ? parseInt(fallback_role_id, 10) : null;
+    
+    if (!targetRoleId) {
        // Find 'Member' as fallback
-       const [memberRole] = await connection.execute('SELECT id FROM roles WHERE workspace_id = ? AND name = ?', [workspaceId, 'Member']);
-       if(memberRole.length > 0) {
-           await connection.execute('UPDATE workspace_members SET role_id = ? WHERE role_id = ? AND workspace_id = ?', [memberRole[0].id, roleId, workspaceId]);
+       const memberRole = await tx.role.findFirst({
+         where: {
+           workspaceId: parseInt(workspaceId, 10),
+           name: 'Member'
+         }
+       });
+       if (memberRole) {
+           targetRoleId = memberRole.id;
        }
     }
     
-    await connection.execute('DELETE FROM roles WHERE id = ?', [roleId]);
+    if (targetRoleId) {
+      await tx.workspaceMember.updateMany({
+        where: {
+          roleId: parseInt(roleId, 10),
+          workspaceId: parseInt(workspaceId, 10)
+        },
+        data: {
+          roleId: targetRoleId
+        }
+      });
+    }
+    
+    await tx.role.delete({
+      where: {
+        id: parseInt(roleId, 10)
+      }
+    });
   });
 
   return sendSuccess(res, { message: 'Role deleted successfully' });
@@ -146,12 +254,21 @@ rolesRouter.get('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
   const role = await getRoleInWorkspace(workspaceId, roleId);
   if (!role) return sendError(res, 'Role not found', 404);
 
-  const permissions = await query(`
-    SELECT p.id, p.module, p.action, p.description
-    FROM permissions p
-    INNER JOIN role_permissions rp ON rp.permission_id = p.id
-    WHERE rp.role_id = ?
-  `, [role.id]);
+  const permissions = await prisma.permission.findMany({
+    where: {
+      rolePermissions: {
+        some: {
+          roleId: role.id
+        }
+      }
+    },
+    select: {
+      id: true,
+      module: true,
+      action: true,
+      description: true
+    }
+  });
 
   return sendSuccess(res, { permissions });
 }));
@@ -174,22 +291,20 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
     return sendError(res, 'Cannot remove all permissions from the Admin role', 400);
   }
 
-  await withTransaction(async (connection) => {
-    await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [role.id]);
+  await prisma.$transaction(async (tx) => {
+    await tx.rolePermission.deleteMany({
+      where: {
+        roleId: role.id
+      }
+    });
     
     if (permission_ids.length > 0) {
-      // Use parameterized query for safety if possible, or build carefully
-      const values = [];
-      const params = [];
-      for (const pId of permission_ids) {
-        values.push('(?, ?)');
-        params.push(role.id, pId);
-      }
-      
-      await connection.execute(
-        `INSERT INTO role_permissions (role_id, permission_id) VALUES ${values.join(', ')}`,
-        params
-      );
+      await tx.rolePermission.createMany({
+        data: permission_ids.map(pId => ({
+          roleId: role.id,
+          permissionId: parseInt(pId, 10)
+        }))
+      });
     }
   });
 
@@ -199,8 +314,29 @@ rolesRouter.put('/workspaces/:workspaceId/roles/:roleId/permissions', asyncHandl
 // --- PERMISSIONS ROUTES ---
 // GET /permissions (List all available permissions to pick from)
 rolesRouter.get('/permissions', asyncHandler(async (req, res) => {
-  const permissions = await query('SELECT * FROM permissions ORDER BY module ASC, action ASC');
-  return sendSuccess(res, { permissions });
+  const permissions = await prisma.permission.findMany({
+    select: {
+      id: true,
+      module: true,
+      action: true,
+      description: true,
+      createdAt: true
+    },
+    orderBy: [
+      { module: 'asc' },
+      { action: 'asc' }
+    ]
+  });
+
+  const mappedPermissions = permissions.map(p => ({
+    id: p.id,
+    module: p.module,
+    action: p.action,
+    description: p.description,
+    created_at: p.createdAt
+  }));
+
+  return sendSuccess(res, { permissions: mappedPermissions });
 }));
 
 module.exports = { rolesRouter };

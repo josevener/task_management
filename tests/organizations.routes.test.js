@@ -22,42 +22,34 @@ test('organization edits accept admins with legacy mixed-case Admin roles', asyn
   const updatedOrganizations = [];
 
   const databaseMock = {
-    async query(sql, params = []) {
-      if (sql.includes('FROM organizations o') && sql.includes(`p.action = 'organizations:edit'`)) {
-        return [{ id: 1 }];
+    prisma: {
+      organization: {
+        async findUnique({ where }) {
+          if (where.id === 1) {
+            return { ownerId: 5 };
+          }
+          return null;
+        },
+        async update({ where, data }) {
+          updatedOrganizations.push(data);
+          return {
+            id: 1,
+            name: data.name || 'Updated Org',
+            slug: data.slug || 'updated-org',
+            logoUrl: data.logoUrl || null,
+            subscriptionTier: data.subscriptionTier || 'free',
+            timezone: data.timezone || null,
+            defaultLanguage: data.defaultLanguage || null,
+            dateFormat: data.dateFormat || null,
+            timeFormat: data.timeFormat || null,
+            subscriptionStatus: data.subscriptionStatus || 'active',
+            ownerId: 5,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-01-01T00:00:00.000Z')
+          };
+        }
       }
-
-      if (sql.includes('UPDATE organizations')) {
-        updatedOrganizations.push(params);
-        return { affectedRows: 1 };
-      }
-
-      if (sql.includes('SELECT') && sql.includes('FROM organizations o') && sql.includes('LIMIT 1')) {
-        return [{
-          id: 1,
-          name: 'Updated Org',
-          slug: 'updated-org',
-          logo_url: null,
-          subscription_tier: 'free',
-          timezone: null,
-          default_language: null,
-          date_format: null,
-          time_format: null,
-          subscription_status: null,
-          owner_id: 5,
-          created_at: '2026-01-01T00:00:00.000Z',
-          updated_at: '2026-01-01T00:00:00.000Z',
-        }];
-      }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction() {
-      throw new Error('withTransaction should not be called');
-    },
-    async getExistingColumns() {
-      return new Set(['timezone', 'default_language', 'date_format', 'time_format', 'subscription_status', 'owner_id']);
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/organizations.routes.js', 'organizationsRouter', {

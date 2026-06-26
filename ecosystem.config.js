@@ -30,8 +30,9 @@ module.exports = {
     },
     {
       name: "task_management_web",
-      script: "npm.cmd",
-      args: "--prefix client run dev",
+      script: "cmd.exe",
+      args: "/c npm --prefix client run start",
+      interpreter: "none",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,

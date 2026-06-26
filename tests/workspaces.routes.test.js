@@ -23,23 +23,21 @@ function createWorkspaceAuthMock(checkPermissionImpl) {
 
 test('workspace creation is denied when the user lacks create permission in the organization', async () => {
   const databaseMock = {
-    async query(sql) {
-      if (sql.includes('FROM organizations o') && sql.includes('o.is_active = TRUE')) {
-        return [{ id: 3 }];
+    prisma: {
+      organization: {
+        async count() {
+          return 1; // has access to the organization
+        },
+        async findUnique() {
+          return { ownerId: 99 }; // not the owner
+        }
+      },
+      workspaceMember: {
+        async count() {
+          return 0; // lacks create permission
+        }
       }
-
-      if (sql.includes('FROM organizations o') && sql.includes(`p.action = 'workspaces:create'`)) {
-        return [];
-      }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction() {
-      throw new Error('withTransaction should not be called');
-    },
-    async getExistingColumns() {
-      return new Set();
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
@@ -66,24 +64,17 @@ test('workspace creation is denied when the user lacks create permission in the 
 
 test('member updates reject global profile changes from the workspace screen', async () => {
   const databaseMock = {
-    async query(sql) {
-      if (sql.includes('FROM workspace_members wm') && sql.includes('WHERE wm.id = ?')) {
-        return [{
-          workspace_id: 9,
-          user_id: 15,
-          role_name: 'Member',
-          is_system_role: 0,
-        }];
+    prisma: {
+      workspaceMember: {
+        async findUnique() {
+          return {
+            workspaceId: 9,
+            userId: 15,
+            roleObj: { name: 'Member', isSystemRole: false }
+          };
+        }
       }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction() {
-      throw new Error('withTransaction should not be called');
-    },
-    async getExistingColumns() {
-      return new Set();
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
@@ -108,34 +99,37 @@ test('member updates reject global profile changes from the workspace screen', a
 });
 
 test('removing a workspace member also clears their project memberships in that workspace', async () => {
-  const executedSql = [];
+  const executedCalls = [];
 
   const databaseMock = {
-    async query(sql) {
-      if (sql.includes('FROM workspace_members wm') && sql.includes('WHERE wm.id = ?')) {
-        return [{
-          workspace_id: 4,
-          user_id: 25,
-          role_name: 'Member',
-          is_system_role: 0,
-        }];
+    prisma: {
+      workspaceMember: {
+        async findUnique() {
+          return {
+            workspaceId: 4,
+            userId: 25,
+            roleObj: { name: 'Member', isSystemRole: false }
+          };
+        }
+      },
+      async $transaction(callback) {
+        const txMock = {
+          projectMember: {
+            async deleteMany(args) {
+              executedCalls.push({ type: 'deleteManyProjectMembers', args });
+              return { count: 1 };
+            }
+          },
+          workspaceMember: {
+            async delete(args) {
+              executedCalls.push({ type: 'deleteWorkspaceMember', args });
+              return { id: args.where.id };
+            }
+          }
+        };
+        return callback(txMock);
       }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction(callback) {
-      const connection = {
-        async execute(sql) {
-          executedSql.push(sql);
-          return [{ affectedRows: 1 }];
-        },
-      };
-
-      return callback(connection);
-    },
-    async getExistingColumns() {
-      return new Set();
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
@@ -150,8 +144,8 @@ test('removing a workspace member also clears their project memberships in that 
     });
 
     assert.equal(response.status, 200);
-    assert.ok(executedSql.some((sql) => sql.includes('DELETE pm')));
-    assert.ok(executedSql.some((sql) => sql.includes('DELETE FROM workspace_members')));
+    assert.ok(executedCalls.some((call) => call.type === 'deleteManyProjectMembers'));
+    assert.ok(executedCalls.some((call) => call.type === 'deleteWorkspaceMember'));
   });
 
   routerHarness.restore();

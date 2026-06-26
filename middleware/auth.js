@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { prisma } = require('../config/database');
 const { sendError } = require('../utils/responses');
 
 async function attachCurrentUser(req, _res, next) {
@@ -7,13 +7,33 @@ async function attachCurrentUser(req, _res, next) {
     return next();
   }
 
-  const rows = await query(`
-    SELECT id, email, first_name, last_name, avatar_url, created_at
-    FROM users
-    WHERE id = ? AND is_active = TRUE
-  `, [req.session.user_id]);
+  const user = await prisma.user.findFirst({
+    where: {
+      id: req.session.user_id,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      avatarUrl: true,
+      createdAt: true,
+    },
+  });
 
-  req.currentUser = rows[0] || null;
+  if (user) {
+    req.currentUser = {
+      id: user.id,
+      email: user.email,
+      first_name: user.firstName,
+      last_name: user.lastName,
+      avatar_url: user.avatarUrl,
+      created_at: user.createdAt,
+    };
+  } else {
+    req.currentUser = null;
+  }
   next();
 }
 
@@ -31,15 +51,23 @@ function requireAuth(req, res, next) {
 async function checkPermission(workspaceId, userId, action) {
   if (!workspaceId || !userId || !action) return false;
   
-  const rows = await query(`
-    SELECT rp.permission_id 
-    FROM workspace_members wm
-    INNER JOIN role_permissions rp ON rp.role_id = wm.role_id
-    INNER JOIN permissions p ON p.id = rp.permission_id
-    WHERE wm.workspace_id = ? AND wm.user_id = ? AND p.action = ?
-  `, [workspaceId, userId, action]);
+  const count = await prisma.workspaceMember.count({
+    where: {
+      workspaceId: parseInt(workspaceId, 10),
+      userId: parseInt(userId, 10),
+      roleObj: {
+        rolePermissions: {
+          some: {
+            permission: {
+              action: action,
+            },
+          },
+        },
+      },
+    },
+  });
   
-  return rows.length > 0;
+  return count > 0;
 }
 
 module.exports = { attachCurrentUser, requireAuth, checkPermission };

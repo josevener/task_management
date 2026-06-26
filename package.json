@@ -9,27 +9,32 @@
     "dev": "npm run dev:split",
     "start": "node server.js",
     "test": "node --test tests/*.test.js",
-    "migrate": "db-migrate up",
-    "migrate:down": "db-migrate down",
-    "migrate:create": "db-migrate create"
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy && prisma db seed",
+    "migrate:prepare-existing": "node prisma/prepare-existing-prisma-db.js",
+    "migrate:baseline-existing": "prisma migrate resolve --applied 20260626045553_init",
+    "db:seed": "prisma db seed",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/client": "^7.8.0",
     "axios": "^1.8.4",
     "bcryptjs": "^2.4.3",
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
-    "db-migrate": "^0.11.14",
-    "db-migrate-mysql": "^3.0.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
-    "mysql2": "^3.12.0",
+    "mariadb": "^3.5.3",
     "next": "^16.2.6",
     "nodemailer": "^8.0.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@prisma/adapter-mariadb": "^7.8.0",
+    "nodemon": "^3.1.10",
+    "prisma": "^7.8.0"
   }
 }

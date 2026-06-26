@@ -23,16 +23,13 @@ function createWorkspaceAuthMock(checkPermissionImpl = async () => false) {
 
 test('project updates require current workspace membership even for former project owners', async () => {
   const databaseMock = {
-    async query(sql) {
-      if (sql.includes('FROM projects p') && sql.includes('INNER JOIN workspace_members wm')) {
-        return [];
+    prisma: {
+      project: {
+        async findFirst() {
+          return null;
+        }
       }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction() {
-      throw new Error('withTransaction should not be called');
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/projects.routes.js', 'projectsRouter', {

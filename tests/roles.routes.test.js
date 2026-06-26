@@ -20,16 +20,13 @@ const authMock = {
 
 test('role list requires explicit role view permission', async () => {
   const databaseMock = {
-    async query(sql) {
-      if (sql.includes('FROM workspace_members wm') && sql.includes('p.action IN')) {
-        return [];
+    prisma: {
+      workspaceMember: {
+        async count() {
+          return 0; // Mock count to 0 (user has no permission)
+        }
       }
-
-      throw new Error(`Unexpected query: ${sql}`);
-    },
-    async withTransaction() {
-      throw new Error('withTransaction should not be called');
-    },
+    }
   };
 
   const routerHarness = loadRouterApp('routes/roles.routes.js', 'rolesRouter', {
