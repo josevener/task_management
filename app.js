@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const session = require('express-session');
 
 const { env } = require('./config/env');
 const { authRouter } = require('./routes/auth.routes');
@@ -12,6 +11,8 @@ const { rolesRouter } = require('./routes/roles.routes');
 const { notificationsRouter } = require('./routes/notifications.routes');
 const { notFoundHandler } = require('./middleware/not-found');
 const { errorHandler } = require('./middleware/error-handler');
+const { MariaDbSessionStore } = require('./utils/mariadb-session-store');
+const { configureSession } = require('./utils/session-config');
 
 const app = express();
 
@@ -42,18 +43,9 @@ app.use(cors({
 
 app.use(express.json());
 
-app.use(session({
-  name: 'task_management.sid',
-  secret: env.sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: env.nodeEnv === 'production',
-    maxAge: 1000 * 60 * 60 * 24 * 7,
-  },
-}));
+const sessionStore = env.nodeEnv === 'production' ? new MariaDbSessionStore(env) : undefined;
+
+configureSession(app, env, sessionStore);
 
 app.get('/health', (_req, res) => {
   res.json({ success: true, data: { status: 'ok' } });
@@ -70,4 +62,4 @@ app.use('/api', rolesRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-module.exports = { app, env };
+module.exports = { app, env, sessionStore };

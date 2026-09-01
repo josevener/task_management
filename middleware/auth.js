@@ -2,39 +2,43 @@ const { prisma } = require('../config/database');
 const { sendError } = require('../utils/responses');
 
 async function attachCurrentUser(req, _res, next) {
-  if (!req.session.user_id) {
-    req.currentUser = null;
+  try {
+    if (!req.session.user_id) {
+      req.currentUser = null;
+      return next();
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        id: req.session.user_id,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
+    });
+
+    if (user) {
+      req.currentUser = {
+        id: user.id,
+        email: user.email,
+        first_name: user.firstName,
+        last_name: user.lastName,
+        avatar_url: user.avatarUrl,
+        created_at: user.createdAt,
+      };
+    } else {
+      req.currentUser = null;
+    }
     return next();
+  } catch (error) {
+    return next(error);
   }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: req.session.user_id,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      avatarUrl: true,
-      createdAt: true,
-    },
-  });
-
-  if (user) {
-    req.currentUser = {
-      id: user.id,
-      email: user.email,
-      first_name: user.firstName,
-      last_name: user.lastName,
-      avatar_url: user.avatarUrl,
-      created_at: user.createdAt,
-    };
-  } else {
-    req.currentUser = null;
-  }
-  next();
 }
 
 function requireAuth(req, res, next) {

@@ -50,3 +50,17 @@ test('prisma migration artifacts include seeded RBAC data and an explicit existi
   assert.match(authIntegrationTest, /\/resend-otp/);
   assert.match(authIntegrationTest, /\/reset-password/);
 });
+
+test('the persistent session migration remains represented in the Prisma schema', () => {
+  const sessionMigrationSql = fs.readFileSync(
+    path.join(ROOT_DIR, 'prisma', 'migrations', '20260828000000_add_sessions_table', 'migration.sql'),
+    'utf8'
+  );
+  const prismaSchema = fs.readFileSync(path.join(ROOT_DIR, 'prisma', 'schema.prisma'), 'utf8');
+
+  assert.match(sessionMigrationSql, /CREATE TABLE `sessions`/);
+  assert.match(sessionMigrationSql, /INDEX `sessions_expires_at_idx`/);
+  assert.match(prismaSchema, /model Session \{/);
+  assert.match(prismaSchema, /@@map\("sessions"\)/);
+  assert.match(prismaSchema, /@@index\(\[expiresAt\], map: "sessions_expires_at_idx"\)/);
+});

@@ -43,3 +43,40 @@ test('role list requires explicit role view permission', async () => {
 
   routerHarness.restore();
 });
+
+test('role deletion rejects a fallback role from another workspace', async () => {
+  const databaseMock = {
+    prisma: {
+      workspaceMember: {
+        async count() {
+          return 1;
+        }
+      },
+      role: {
+        async findFirst(args) {
+          if (args.where.id === 2) {
+            return { id: 2, workspaceId: 4, isSystemRole: false };
+          }
+          return null;
+        }
+      }
+    }
+  };
+
+  const routerHarness = loadRouterApp('routes/roles.routes.js', 'rolesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': authMock,
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/workspaces/4/roles/2', {
+      method: 'DELETE',
+      body: { fallback_role_id: 99 },
+    });
+
+    assert.equal(response.status, 422);
+    assert.equal(response.body.errors.fallback_role_id, 'Fallback role does not belong to this workspace');
+  });
+
+  routerHarness.restore();
+});

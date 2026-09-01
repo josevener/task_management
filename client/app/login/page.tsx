@@ -72,7 +72,7 @@ export default function LoginPage() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 shadow-inner backdrop-blur-md border border-white/20">
             <Layers className="h-6 w-6 text-white" />
           </div>
-          <span className="text-2xl font-bold tracking-tight">Zentrix</span>
+          <span className="text-2xl font-bold tracking-tight">Zentask</span>
         </div>
 
         <div className="relative z-10 flex max-w-lg flex-col gap-6 my-auto">
@@ -85,7 +85,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10 text-sm font-medium text-indigo-400/60">
-          © {new Date().getFullYear()} Zentrix Inc. All rights reserved.
+          © {new Date().getFullYear()} Zentrix Solutions. All rights reserved.
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function LoginPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 shadow-md">
                 <Layers className="h-6 w-6 text-white" />
               </div>
-              <span className="text-2xl font-bold tracking-tight">Zentrix</span>
+              <span className="text-2xl font-bold tracking-tight">Zentask</span>
             </div>
             
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Welcome back</h2>
@@ -148,7 +148,7 @@ export default function LoginPage() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -190,7 +190,7 @@ export default function LoginPage() {
           </form>
 
           <div className="text-center text-sm">
-            <span className="text-muted-foreground mr-1">Don't have an account?</span>
+            <span className="text-muted-foreground mr-1">Don&apos;t have an account?</span>
             <Link 
               href="/register" 
               className="font-semibold text-indigo-600 transition-colors hover:text-indigo-500 hover:underline underline-offset-4"

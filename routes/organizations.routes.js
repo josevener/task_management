@@ -4,6 +4,7 @@ const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
+const { createRoleWithPermissions } = require('../utils/rbac');
 
 const organizationsRouter = express.Router();
 organizationsRouter.use(attachCurrentUser, requireAuth);
@@ -198,29 +199,16 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
 
     const roleIds = {};
     for (const roleDef of defaultRoles) {
-      const newRole = await tx.role.create({
-        data: {
-          workspaceId: newWs.id,
-          name: roleDef.name,
-          description: roleDef.description,
-          isSystemRole: roleDef.isSystemRole
-        }
+      const newRole = await createRoleWithPermissions(tx, {
+        workspaceId: newWs.id,
+        name: roleDef.name,
+        description: roleDef.description,
+        isSystemRole: roleDef.isSystemRole
       });
       roleIds[roleDef.name] = newRole.id;
     }
 
-    // 2. Grant Permissions to Admin Role
-    const permissions = await tx.permission.findMany({ select: { id: true } });
-    if (permissions.length > 0) {
-      await tx.rolePermission.createMany({
-        data: permissions.map(p => ({
-          roleId: roleIds['Admin'],
-          permissionId: p.id
-        }))
-      });
-    }
-
-    // 3. Add user as Admin member
+    // Add the creator as the initial Admin member.
     await tx.workspaceMember.create({
       data: {
         workspaceId: newWs.id,

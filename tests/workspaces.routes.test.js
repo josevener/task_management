@@ -98,6 +98,95 @@ test('member updates reject global profile changes from the workspace screen', a
   routerHarness.restore();
 });
 
+test('member updates reject a role from another workspace', async () => {
+  const databaseMock = {
+    prisma: {
+      workspaceMember: {
+        async findUnique() {
+          return { workspaceId: 9, userId: 15, roleObj: { name: 'Member' } };
+        }
+      },
+      role: {
+        async findFirst() {
+          return null;
+        }
+      }
+    }
+  };
+
+  const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': createWorkspaceAuthMock(async () => true),
+    'utils/mailer.js': { async sendMail() { return true; } },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/members/22', {
+      method: 'PUT',
+      body: { role_id: 99 },
+    });
+
+    assert.equal(response.status, 422);
+    assert.equal(response.body.errors.role_id, 'The selected role does not belong to this workspace');
+  });
+
+  routerHarness.restore();
+});
+
+test('member invitations reject a numeric role from another workspace', async () => {
+  const databaseMock = {
+    prisma: {
+      user: {
+        async findUnique() {
+          return { id: 25, firstName: 'Invitee' };
+        }
+      },
+      workspaceMember: {
+        async count() {
+          return 0;
+        }
+      },
+      workspace: {
+        async findUnique() {
+          return { name: 'Workspace A' };
+        }
+      },
+      async $transaction(callback) {
+        return callback({
+          role: {
+            async findFirst() {
+              return null;
+            }
+          },
+          workspaceMember: {
+            async findFirst() {
+              return null;
+            }
+          }
+        });
+      }
+    }
+  };
+
+  const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': createWorkspaceAuthMock(async () => true),
+    'utils/mailer.js': { async sendMail() { return true; } },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/4/members', {
+      method: 'POST',
+      body: { email: 'invitee@example.com', role: '99' },
+    });
+
+    assert.equal(response.status, 422);
+    assert.equal(response.body.errors.role, 'The selected role does not belong to this workspace');
+  });
+
+  routerHarness.restore();
+});
+
 test('removing a workspace member also clears their project memberships in that workspace', async () => {
   const executedCalls = [];
 

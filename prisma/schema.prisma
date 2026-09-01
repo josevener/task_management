@@ -433,3 +433,14 @@ model PasswordReset {
   @@index([token], map: "idx_token")
   @@map("password_resets")
 }
+
+// Express sessions are accessed by the custom MariaDB session store rather than Prisma.
+// Keeping the model here prevents future Prisma migrations from treating the table as drift.
+model Session {
+  sid       String   @id @db.VarChar(255)
+  data      String   @db.LongText
+  expiresAt DateTime @map("expires_at") @db.DateTime(0)
+
+  @@index([expiresAt], map: "sessions_expires_at_idx")
+  @@map("sessions")
+}

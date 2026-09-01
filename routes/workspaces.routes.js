@@ -594,27 +594,28 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       throw error;
     }
 
-    let roleIdToAssign = null;
-    if (/^[0-9]+$/.test(role)) {
-      roleIdToAssign = parseInt(role, 10);
-    } else {
-      const roleRow = await tx.role.findFirst({
-        where: {
-          workspaceId: parseInt(req.params.workspaceId, 10),
-          name: { equals: role }
-        }
-      });
-      if (roleRow) {
-        roleIdToAssign = roleRow.id;
+    const roleFilter = /^[0-9]+$/.test(String(role))
+      ? { id: parseInt(role, 10) }
+      : { name: { equals: String(role) } };
+    const roleRow = await tx.role.findFirst({
+      where: {
+        workspaceId: parseInt(req.params.workspaceId, 10),
+        ...roleFilter
       }
+    });
+
+    if (!roleRow) {
+      const error = new Error('The selected role does not belong to this workspace');
+      error.payload = { role: 'The selected role does not belong to this workspace' };
+      throw error;
     }
 
     const newMember = await tx.workspaceMember.create({
       data: {
         workspaceId: parseInt(req.params.workspaceId, 10),
         userId: user_id_to_add,
-        roleId: roleIdToAssign,
-        role: /^[0-9]+$/.test(role) ? 'member' : role
+        roleId: roleRow.id,
+        role: roleRow.name
       },
       include: {
         user: true,
@@ -668,12 +669,15 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
   const errors = {};
 
   if (role_id) {
-    const newRole = await prisma.role.findUnique({
-      where: { id: parseInt(role_id, 10) }
+    const newRole = await prisma.role.findFirst({
+      where: {
+        id: parseInt(role_id, 10),
+        workspaceId: targetMember.workspaceId
+      }
     });
 
     if (!newRole) {
-      errors.role_id = 'The selected role does not exist';
+      errors.role_id = 'The selected role does not belong to this workspace';
     } else if (targetMember.roleObj?.name === 'Admin' && newRole.name !== 'Admin') {
       const otherAdminsCount = await prisma.workspaceMember.count({
         where: {

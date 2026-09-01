@@ -91,6 +91,7 @@ async function withTestServer(app, callback) {
     return {
       status: response.status,
       body: parsedBody,
+      headers: response.headers,
     };
   }
 

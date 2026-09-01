@@ -3,6 +3,7 @@ const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
+const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { isValidDate } = require('../utils/validation');
 const sseManager = require('../utils/sse-manager');
 
@@ -31,6 +32,50 @@ async function isWorkspaceMember(workspaceId, userId) {
     select: { id: true }
   });
   return Boolean(member);
+}
+
+function taskParentValidationError(message) {
+  const error = new Error(message);
+  error.validationErrors = { parent_task_id: message };
+  return error;
+}
+
+async function validateParentTask(tx, existingTask, parentTaskId) {
+  let parentTask = await tx.task.findFirst({
+    where: {
+      id: parentTaskId,
+      projectId: existingTask.projectId
+    },
+    select: { id: true, parentTaskId: true }
+  });
+
+  if (!parentTask) {
+    throw taskParentValidationError('Parent task must belong to the same project');
+  }
+
+  const visitedParentIds = new Set();
+  while (parentTask) {
+    if (parentTask.id === existingTask.id || visitedParentIds.has(parentTask.id)) {
+      throw taskParentValidationError('Parent task cannot create a circular hierarchy');
+    }
+    visitedParentIds.add(parentTask.id);
+
+    if (!parentTask.parentTaskId) {
+      break;
+    }
+
+    parentTask = await tx.task.findFirst({
+      where: {
+        id: parentTask.parentTaskId,
+        projectId: existingTask.projectId
+      },
+      select: { id: true, parentTaskId: true }
+    });
+
+    if (!parentTask) {
+      throw taskParentValidationError('Parent task must belong to the same project');
+    }
+  }
 }
 
 function mapTask(t) {
@@ -466,6 +511,14 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
       return sendValidationError(res, { assignee_id: 'Assignee must be a member of this workspace' });
     }
   }
+  let requestedParentTaskId = null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'parent_task_id') && req.body.parent_task_id) {
+    const rawParentTaskId = String(req.body.parent_task_id);
+    requestedParentTaskId = /^\d+$/.test(rawParentTaskId) ? Number(rawParentTaskId) : Number.NaN;
+    if (!Number.isSafeInteger(requestedParentTaskId) || requestedParentTaskId === existingTask.id) {
+      return sendValidationError(res, { parent_task_id: 'Parent task must be another task in this project' });
+    }
+  }
 
   const updateData = {};
   if (Object.prototype.hasOwnProperty.call(req.body, 'title')) updateData.title = req.body.title;
@@ -474,7 +527,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'priority')) updateData.priority = req.body.priority;
   if (Object.prototype.hasOwnProperty.call(req.body, 'start_date')) updateData.startDate = req.body.start_date ? new Date(req.body.start_date) : null;
   if (Object.prototype.hasOwnProperty.call(req.body, 'due_date')) updateData.dueDate = req.body.due_date ? new Date(req.body.due_date) : null;
-  if (Object.prototype.hasOwnProperty.call(req.body, 'parent_task_id')) updateData.parentTaskId = req.body.parent_task_id ? parseInt(req.body.parent_task_id, 10) : null;
+  if (Object.prototype.hasOwnProperty.call(req.body, 'parent_task_id')) updateData.parentTaskId = req.body.parent_task_id ? requestedParentTaskId : null;
   if (Object.prototype.hasOwnProperty.call(req.body, 'position')) updateData.position = parseInt(req.body.position, 10);
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id')) {
@@ -488,7 +541,14 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
     return sendError(res, 'No fields to update', 400);
   }
 
-  await prisma.$transaction(async (tx) => {
+  const performTaskUpdate = async (tx) => {
+    const broadcasts = [];
+
+    if (requestedParentTaskId) {
+      // Validate immediately before the write under serializable isolation.
+      await validateParentTask(tx, existingTask, requestedParentTaskId);
+    }
+
     if (Object.keys(updateData).length > 0) {
       await tx.task.update({
         where: { id: parseInt(req.params.id, 10) },
@@ -581,7 +641,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
         task_title: updatedTaskTitle
       };
 
-      sseManager.broadcastToUser(parseInt(req.body.assignee_id, 10), 'new_notification', broadcastPayload);
+      broadcasts.push({ userId: parseInt(req.body.assignee_id, 10), payload: broadcastPayload });
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'status') &&
@@ -624,9 +684,27 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
         task_title: updatedTaskTitle
       };
 
-      sseManager.broadcastToUser(existingTask.assigneeId, 'new_notification', broadcastPayload);
+      broadcasts.push({ userId: existingTask.assigneeId, payload: broadcastPayload });
     }
-  });
+
+    return broadcasts;
+  };
+
+  let pendingBroadcasts;
+  try {
+    pendingBroadcasts = await runSerializableTransaction(prisma, performTaskUpdate);
+  }
+  catch (error) {
+    if (error.validationErrors) {
+      return sendValidationError(res, error.validationErrors);
+    }
+    throw error;
+  }
+
+  // Emit external side effects only after the database transaction commits successfully.
+  for (const broadcast of pendingBroadcasts) {
+    sseManager.broadcastToUser(broadcast.userId, 'new_notification', broadcast.payload);
+  }
 
   const updatedTaskDb = await prisma.task.findUnique({
     where: { id: parseInt(req.params.id, 10) },

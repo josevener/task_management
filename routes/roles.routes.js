@@ -206,8 +206,27 @@ rolesRouter.delete('/workspaces/:workspaceId/roles/:roleId', asyncHandler(async 
   if (!role) return sendError(res, 'Role not found', 404);
   if (role.isSystemRole) return sendError(res, 'Cannot delete system roles', 400);
 
+  const requestedFallbackRoleId = fallback_role_id ? parseInt(fallback_role_id, 10) : null;
+  if (fallback_role_id && (!Number.isInteger(requestedFallbackRoleId) || requestedFallbackRoleId === role.id)) {
+    return sendValidationError(res, { fallback_role_id: 'Fallback role must be a different role in this workspace' });
+  }
+
+  if (requestedFallbackRoleId) {
+    const fallbackRole = await prisma.role.findFirst({
+      where: {
+        id: requestedFallbackRoleId,
+        workspaceId: parseInt(workspaceId, 10)
+      },
+      select: { id: true }
+    });
+
+    if (!fallbackRole) {
+      return sendValidationError(res, { fallback_role_id: 'Fallback role does not belong to this workspace' });
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
-    let targetRoleId = fallback_role_id ? parseInt(fallback_role_id, 10) : null;
+    let targetRoleId = requestedFallbackRoleId;
     
     if (!targetRoleId) {
        // Find 'Member' as fallback
