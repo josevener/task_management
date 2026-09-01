@@ -68,7 +68,7 @@ export default function DashboardLayout({
             onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           />
 
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2">
             <div className="w-full">
               {children}
             </div>

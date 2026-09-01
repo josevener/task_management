@@ -3,6 +3,97 @@ const assert = require('node:assert/strict');
 
 const { loadRouterApp, withTestServer } = require('./router-test-utils');
 
+test('task updates use an integer task ID when loading tags', async () => {
+  let requestedTagTaskId;
+  const databaseMock = {
+    prisma: {
+      task: {
+        async findFirst() {
+          return {
+            id: 1,
+            title: 'Original task',
+            projectId: 20,
+            assigneeId: null,
+            status: 'todo',
+            project: { workspaceId: 4, name: 'Project A' }
+          };
+        },
+        async findUnique() {
+          return {
+            id: 1,
+            title: 'Updated task',
+            projectId: 20,
+            parentTaskId: null,
+            description: null,
+            status: 'todo',
+            priority: 'medium',
+            assigneeId: null,
+            assignedBy: null,
+            startDate: null,
+            dueDate: null,
+            position: 0,
+            createdBy: 8,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            assignee: null,
+            creator: null,
+            assignedByUser: null,
+            project: { name: 'Project A' }
+          };
+        }
+      },
+      taskTagAssignment: {
+        async findMany({ where }) {
+          requestedTagTaskId = where.taskId;
+          return [];
+        }
+      },
+      async $transaction(callback, options) {
+        assert.equal(options.isolationLevel, 'Serializable');
+        return callback({
+          task: { async update() {} },
+          taskTagAssignment: { async deleteMany() {} },
+          taskTag: { async findFirst() { return null; } },
+          activityLog: { async create() {} },
+          notification: { async create() {} },
+          workspace: { async findUnique() { return null; } }
+        });
+      }
+    }
+  };
+  const authMock = {
+    attachCurrentUser(req, _res, next) {
+      req.currentUser = { id: 8 };
+      next();
+    },
+    requireAuth(_req, _res, next) {
+      next();
+    },
+    async checkPermission() {
+      return true;
+    }
+  };
+
+  const routerHarness = loadRouterApp('routes/tasks.routes.js', 'tasksRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': authMock,
+    'utils/sse-manager.js': { broadcastToUser() {} },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/1', {
+      method: 'PATCH',
+      body: { title: 'Updated task' },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(requestedTagTaskId, 1);
+    assert.equal(typeof requestedTagTaskId, 'number');
+  });
+
+  routerHarness.restore();
+});
+
 test('task parent updates reject a task from another project', async () => {
   const databaseMock = {
     prisma: {

@@ -12,8 +12,13 @@ const tasksRouter = express.Router();
 tasksRouter.use(attachCurrentUser, requireAuth);
 
 async function getTaskTags(taskId) {
+  const normalizedTaskId = Number(taskId);
+  if (!Number.isSafeInteger(normalizedTaskId)) {
+    throw new Error('Task tag lookup requires a valid task ID');
+  }
+
   const assignments = await prisma.taskTagAssignment.findMany({
-    where: { taskId },
+    where: { taskId: normalizedTaskId },
     include: { tag: true }
   });
   return assignments.map((a) => ({
@@ -721,7 +726,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   });
 
   const updatedTask = mapTask(updatedTaskDb);
-  updatedTask.tags = await getTaskTags(req.params.id);
+  updatedTask.tags = await getTaskTags(updatedTask.id);
 
   return sendSuccess(res, { task: updatedTask });
 }));
