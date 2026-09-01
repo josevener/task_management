@@ -31,13 +31,12 @@ const sendMail = async ({ to, subject, html, text }) => {
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.warn('SMTP credentials are not configured. Email would have been sent to:', to);
       console.warn('Subject:', subject);
-      console.log('--- HTML Content ---');
-      console.log(html);
+      // Never print message bodies because they may contain password-reset or invitation tokens.
       return true; // Simulate success in dev
     }
 
     const info = await transporter.sendMail({
-      from: `"Zentrix Task Management" <${process.env.SMTP_USER}>`,
+      from: `"Zentask Team" <${process.env.SMTP_USER}>`,
       to,
       subject,
       text: text || html.replace(/<[^>]*>?/gm, ''), // naive html to text fallback

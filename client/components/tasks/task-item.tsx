@@ -10,6 +10,7 @@ interface TaskItemProps {
   task: Task;
   viewMode: "list" | "grid";
   onStatusChange?: (taskId: number, newStatus: Task["status"]) => void;
+  canUpdateStatus?: boolean;
   showProjectName?: boolean;
 }
 
@@ -42,12 +43,13 @@ function getDueState(task: Task) {
   return { label: dueDate.toLocaleDateString(undefined, { month: "short", day: "numeric" }), className: "border-slate-200 bg-slate-50 text-slate-600" };
 }
 
-export function TaskItem({ task, viewMode, onStatusChange, showProjectName = true }: TaskItemProps) {
+export function TaskItem({ task, viewMode, onStatusChange, canUpdateStatus = true, showProjectName = true }: TaskItemProps) {
   const editUrl = `/projects/${task.project_id}/tasks/${task.id}/edit`;
   const dueState = getDueState(task);
   const status = task.status || "todo";
   const priority = task.priority || "medium";
   const assigneeName = task.assignee_first_name ? `${task.assignee_first_name}${task.assignee_last_name ? ` ${task.assignee_last_name}` : ""}` : null;
+  const statusChangeAllowed = Boolean(onStatusChange && canUpdateStatus);
 
   const updateStatus = (newStatus: Task["status"]) => onStatusChange?.(task.id, newStatus);
   const statusMenu = (
@@ -63,16 +65,9 @@ export function TaskItem({ task, viewMode, onStatusChange, showProjectName = tru
   return (
     <article className={`group relative rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md ${viewMode === "grid" ? "flex min-h-[14.25rem] flex-col" : "flex flex-col gap-4 sm:flex-row sm:items-center"}`}>
       <div className="flex min-w-0 flex-1 gap-3">
-        {onStatusChange ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button aria-label={`Change status for ${task.title}`} className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${status === "done" ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-slate-300 hover:border-indigo-500 hover:bg-indigo-50 hover:text-indigo-600"}`}>
-                <CheckCircle2 className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            {statusMenu}
-          </DropdownMenu>
-        ) : <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${status === "done" ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-slate-300"}`}><CheckCircle2 className="h-4 w-4" /></div>}
+        <div aria-hidden="true" className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${status === "done" ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-slate-300"}`}>
+          <CheckCircle2 className="h-4 w-4" />
+        </div>
 
         <div className="min-w-0 flex-1">
           <Link href={editUrl} className="block truncate text-[15px] font-semibold text-slate-900 transition-colors hover:text-indigo-600 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
@@ -92,7 +87,7 @@ export function TaskItem({ task, viewMode, onStatusChange, showProjectName = tru
 
       <div className={`flex items-center justify-between gap-3 ${viewMode === "grid" ? "mt-4 border-t border-slate-100 pt-3" : "sm:ml-auto sm:justify-end"}`}>
         {assigneeName ? <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-bold text-indigo-700">{task.assignee_first_name?.[0]}{task.assignee_last_name?.[0] || ""}</span><span className="max-w-24 truncate">{assigneeName}</span></span> : <span className="inline-flex items-center gap-1 text-xs text-slate-400"><UserRound className="h-3.5 w-3.5" />Unassigned</span>}
-        {onStatusChange ? <DropdownMenu><DropdownMenuTrigger asChild><button aria-label={`Set ${task.title} status`} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Badge variant="outline" className={`h-6 cursor-pointer rounded-full px-2.5 text-[10px] font-semibold capitalize ${STATUS_STYLES[status]}`}><CircleDot className="h-3 w-3" />{status.replace("_", " ")}</Badge></button></DropdownMenuTrigger>{statusMenu}</DropdownMenu> : <Badge variant="outline" className={`h-6 rounded-full px-2.5 text-[10px] font-semibold capitalize ${STATUS_STYLES[status]}`}><CircleDot className="h-3 w-3" />{status.replace("_", " ")}</Badge>}
+        {statusChangeAllowed ? <DropdownMenu><DropdownMenuTrigger asChild><button aria-label={`Set ${task.title} status`} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Badge variant="outline" className={`h-6 cursor-pointer rounded-full px-2.5 text-[10px] font-semibold capitalize ${STATUS_STYLES[status]}`}><CircleDot className="h-3 w-3" />{status.replace("_", " ")}</Badge></button></DropdownMenuTrigger>{statusMenu}</DropdownMenu> : <Badge variant="outline" className={`h-6 rounded-full px-2.5 text-[10px] font-semibold capitalize ${STATUS_STYLES[status]}`}><CircleDot className="h-3 w-3" />{status.replace("_", " ")}</Badge>}
       </div>
     </article>
   );

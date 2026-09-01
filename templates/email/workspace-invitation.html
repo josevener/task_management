@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>Workspace invitation</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f1f5f9;color:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{preheader}}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f1f5f9;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:24px 32px;background:#312e81;color:#ffffff;">
+                <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;">Zentrix</div>
+                <div style="margin-top:4px;font-size:13px;color:#c7d2fe;">Task Management</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:36px 32px 16px;">
+                <div style="display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Workspace invitation</div>
+                <h1 style="margin:18px 0 12px;font-size:28px;line-height:1.25;color:#0f172a;">You're invited to collaborate</h1>
+                <p style="margin:0;font-size:16px;line-height:1.7;color:#475569;"><strong style="color:#0f172a;">{{inviter_name}}</strong> invited you to join <strong style="color:#0f172a;">{{workspace_name}}</strong> on Zentrix.</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:20px 32px 28px;">
+                <a href="{{invitation_url}}" style="display:inline-block;padding:14px 24px;border-radius:8px;background:#4f46e5;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">Accept invitation</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 32px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                  <tr>
+                    <td style="padding:16px;font-size:14px;line-height:1.6;color:#475569;"><strong style="color:#334155;">Available for 48 hours</strong><br>This secure link works once. After it expires, ask a workspace administrator to send a new invitation.</td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 8px;font-size:13px;line-height:1.5;color:#64748b;">If the button does not work, copy and paste this link into your browser:</p>
+                <p style="margin:0;word-break:break-all;font-size:13px;line-height:1.5;color:#4338ca;">{{invitation_url}}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#64748b;">If you were not expecting this invitation, you can safely ignore this email. No account or workspace access will be created unless the invitation is accepted.</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

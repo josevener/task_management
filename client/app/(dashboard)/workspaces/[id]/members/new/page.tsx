@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { addWorkspaceMember } from "@/lib/api/members";
-import { apiGet } from "@/lib/api-client";
+import { ApiClientError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/lib/toast";
-import { Loader2, ArrowLeft, UserPlus } from "lucide-react";
-import { MemberForm } from "@/components/forms/MemberForm";
+import { ArrowLeft, UserPlus } from "lucide-react";
+import { InviteMemberForm } from "@/components/forms/invite-member-form";
 
 export default function NewMemberPage() {
   const params = useParams();
@@ -17,63 +17,26 @@ export default function NewMemberPage() {
   const { showToast } = useToast();
   const workspaceId = Number(params.id);
 
-  const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [roles, setRoles] = useState<any[]>([]);
 
-  useEffect(() => {
-    async function fetchRoles() {
-      if (isNaN(workspaceId)) return;
-      try {
-        const res = await apiGet<any>(`/workspaces/${workspaceId}/roles`);
-        setRoles(res.roles || []);
-      }
-      catch (error) {
-        showToast("Error loading roles", "error");
-      }
-      finally {
-        setLoading(false);
-      }
-    }
-    fetchRoles();
-  }, [workspaceId, showToast]);
-
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (email: string) => {
     try {
       setIsSubmitting(true);
-      // Using 'create' mode by default as it covers both cases in the backend usually if data is provided
-      // or we can stick to 'invite' if that's what's preferred. 
-      // Given the original had both, I'll use 'create' with details.
-      await addWorkspaceMember(
-        workspaceId,
-        data.email,
-        data.role_id,
-        'create',
-        {
-          first_name: data.first_name,
-          last_name: data.last_name,
-          password: "temporaryPassword123!" // Or random, or let them set it. Original had a field.
-        }
-      );
+      const response = await addWorkspaceMember(workspaceId, email);
 
-      showToast("Member added successfully", "success");
+      showToast(`${response.message} Sent to ${response.invitation.email}.`, "success");
       router.push(`/workspaces/${workspaceId}/members`);
     }
-    catch (error: any) {
-      showToast(error.message || "Failed to add member", "error");
+    catch (error) {
+      const message = error instanceof ApiClientError && error.errors?.email
+        ? error.errors.email
+        : error instanceof Error ? error.message : "Failed to send invitation";
+      showToast(message, "error");
     }
     finally {
       setIsSubmitting(false);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
 
   return (
     <div className="w-full space-y-4">
@@ -84,8 +47,8 @@ export default function NewMemberPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Add New Member</h1>
-          <p className="text-muted-foreground">Invite someone new to join your workspace team.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Invite a team member</h1>
+          <p className="text-muted-foreground">Send a secure invitation that expires in 48 hours.</p>
         </div>
       </div>
 
@@ -93,19 +56,17 @@ export default function NewMemberPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-slate-500" />
-            Member Details
+            Email invitation
           </CardTitle>
           <CardDescription>
-            Enter the details for the new member you want to add.
+            Enter their email address. They will complete their own profile when they accept.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <MemberForm
-            roles={roles}
+          <InviteMemberForm
             onSubmit={handleSubmit}
             onCancel={() => router.push(`/workspaces/${workspaceId}/members`)}
             isSubmitting={isSubmitting}
-            submitLabel="Add Member"
           />
         </CardContent>
       </Card>

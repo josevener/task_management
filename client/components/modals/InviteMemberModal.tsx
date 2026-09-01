@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,9 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { MemberForm } from "@/components/forms/MemberForm";
+import { InviteMemberForm } from "@/components/forms/invite-member-form";
 import { addWorkspaceMember } from "@/lib/api/members";
-import { apiGet } from "@/lib/api-client";
+import { ApiClientError } from "@/lib/api-client";
 import { useToast } from "@/lib/toast";
 import { UserPlus } from "lucide-react";
 
@@ -29,53 +29,21 @@ export function InviteMemberModal({
 }: InviteMemberModalProps) {
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [roles, setRoles] = useState<any[]>([]);
-  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
-
-  useEffect(() => {
-    async function fetchRoles() {
-      if (!isOpen || !workspaceId) return;
-
-      try {
-        setIsLoadingRoles(true);
-        const res = await apiGet<any>(`/workspaces/${workspaceId}/roles`);
-        setRoles(res.roles || []);
-      }
-      catch (error) {
-        console.log("Failed to load roles", error);
-        showToast("Error loading roles", "error");
-      }
-      finally {
-        setIsLoadingRoles(false);
-      }
-    }
-    fetchRoles();
-  }, [isOpen, workspaceId, showToast]);
-
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (email: string) => {
     try {
       setIsSubmitting(true);
-      await addWorkspaceMember(
-        workspaceId,
-        data.email,
-        data.role_id,
-        'create', // default to create for richer UI experience
-        {
-          first_name: data.first_name,
-          last_name: data.last_name,
-        }
-      );
+      const response = await addWorkspaceMember(workspaceId, email);
 
-      showToast("Invitation sent! A verification or notification email has been sent to the member.", "success");
+      showToast(`${response.message} Sent to ${response.invitation.email}.`, "success");
       onSuccess?.();
       onClose();
     }
-    catch (error: any) {
-      if (error.errors && error.errors.email) {
+    catch (error) {
+      if (error instanceof ApiClientError && error.errors?.email) {
         showToast(error.errors.email, "error");
       }
       else {
-        showToast(error.message || "Failed to invite member", "error");
+        showToast(error instanceof Error ? error.message : "Failed to send invitation", "error");
       }
     }
     finally {
@@ -94,26 +62,14 @@ export function InviteMemberModal({
             <div>
               <DialogTitle className="text-xl">Invite Team Member</DialogTitle>
               <DialogDescription className="text-slate-500 mt-1">
-                Add a new member to your workspace team.
+                Enter an email address. The invitation expires in 48 hours.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <div className="p-6 bg-white">
-          {!isLoadingRoles ? (
-            <MemberForm
-              roles={roles}
-              onSubmit={handleSubmit}
-              onCancel={onClose}
-              isSubmitting={isSubmitting}
-              submitLabel="Send Invitation"
-            />
-          ) : (
-            <div className="flex h-64 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-            </div>
-          )}
+          <InviteMemberForm onSubmit={handleSubmit} onCancel={onClose} isSubmitting={isSubmitting} />
         </div>
       </DialogContent>
     </Dialog>

@@ -1,6 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 const { env } = require('../config/env');
 const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth, checkPermission } = require('../middleware/auth');
@@ -9,9 +7,48 @@ const { sendError, sendSuccess, sendValidationError } = require('../utils/respon
 const { createSlug } = require('../utils/slug');
 const { sendMail } = require('../utils/mailer');
 const { createRoleWithPermissions } = require('../utils/rbac');
+const { runSerializableTransaction } = require('../utils/serializable-transaction');
+const {
+  normalizeEmail,
+  createInvitationToken,
+  hashInvitationToken,
+  createInvitationExpiry,
+  renderWorkspaceInvitationEmail,
+} = require('../utils/workspace-invitations');
 
 const workspacesRouter = express.Router();
 workspacesRouter.use(attachCurrentUser, requireAuth);
+
+async function ensureDefaultMemberRole(workspaceId, selectedRole) {
+  if (selectedRole) return selectedRole;
+
+  // Repair legacy workspaces that were created before default RBAC roles were provisioned.
+  return prisma.$transaction(async (tx) => {
+    const roleCreatedByAnotherRequest = await tx.role.findFirst({
+      where: { workspaceId, name: 'Member' },
+      select: { id: true, name: true },
+    });
+    if (roleCreatedByAnotherRequest) return roleCreatedByAnotherRequest;
+
+    try {
+      return await createRoleWithPermissions(tx, {
+        workspaceId,
+        name: 'Member',
+        description: 'Can create and manage tasks.',
+        isSystemRole: true,
+      });
+    } catch (error) {
+      // The unique workspace/name constraint resolves concurrent repair attempts safely.
+      if (error.code === 'P2002') {
+        return tx.role.findFirst({
+          where: { workspaceId, name: 'Member' },
+          select: { id: true, name: true },
+        });
+      }
+      throw error;
+    }
+  });
+}
 
 function mapWorkspace(w, currentUserId) {
   if (!w) return null;
@@ -447,206 +484,170 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
 }));
 
 workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => {
-  const email = String(req.body.email || '').trim();
-  const role = req.body.role || 'member';
-  const action = req.body.action || 'invite';
+  const email = normalizeEmail(req.body.email);
+  const workspaceId = parseInt(req.params.workspaceId, 10);
   const errors = {};
 
   if (!email) {
     errors.email = 'Email is required';
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Invalid email format';
+  } else if (email.length > 255) {
+    errors.email = 'Email must be 255 characters or fewer';
   }
 
-  const canInvite = await checkPermission(req.params.workspaceId, req.currentUser.id, 'members:invite');
-  if (!canInvite) {
-    errors.workspace_id = 'You do not have permission to add members to this workspace';
-  }
-
-  if (action === 'create') {
-    if (!String(req.body.first_name || '').trim()) {
-      errors.first_name = 'First name is required';
-    }
-    if (!String(req.body.last_name || '').trim()) {
-      errors.last_name = 'Last name is required';
-    }
+  if (!Number.isInteger(workspaceId) || workspaceId < 1) {
+    errors.workspace_id = 'Workspace not found';
   }
 
   if (Object.keys(errors).length > 0) {
     return sendValidationError(res, errors);
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email }
+  const canInvite = await checkPermission(workspaceId, req.currentUser.id, 'members:invite');
+  if (!canInvite) {
+    return sendError(res, 'You do not have permission to invite members to this workspace', 403);
+  }
+
+  const workspace = await prisma.workspace.findFirst({
+    where: { id: workspaceId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      roles: {
+        where: { name: 'Member' },
+        select: { id: true, name: true },
+        take: 1,
+      },
+    },
   });
 
+  if (!workspace) {
+    return sendError(res, 'Workspace not found', 404);
+  }
+
+  const defaultRole = await ensureDefaultMemberRole(workspaceId, workspace.roles[0]);
+  if (!defaultRole) {
+    return sendError(res, 'Zentrix could not prepare the default Member role. Please try again.', 500);
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     const exists = await prisma.workspaceMember.count({
-      where: {
-        workspaceId: parseInt(req.params.workspaceId, 10),
-        userId: existingUser.id
-      }
+      where: { workspaceId, userId: existingUser.id },
     });
     if (exists > 0) {
       return sendValidationError(res, { email: 'User is already a member of this workspace' });
     }
   }
 
-  const workspaceObj = await prisma.workspace.findUnique({
-    where: { id: parseInt(req.params.workspaceId, 10) },
-    select: { name: true }
+  // Limit one inviter across distinct recipients as well as the per-recipient resend cooldown below.
+  const recentInviteCount = await prisma.workspaceInvitation.count({
+    where: {
+      invitedByUserId: req.currentUser.id,
+      updatedAt: { gt: new Date(Date.now() - 60_000) },
+    },
   });
-  const workspaceName = workspaceObj ? workspaceObj.name : 'Workspace';
-
-  const member = await prisma.$transaction(async (tx) => {
-    let user_id_to_add;
-
-    if (action === 'create') {
-      if (existingUser) {
-        const error = new Error('validation');
-        error.payload = { email: 'User with this email already exists in the system.' };
-        throw error;
-      }
-
-      const tempPassword = crypto.randomBytes(12).toString('hex') + '!';
-      const password_hash = await bcrypt.hash(tempPassword, 10);
-
-      const newUser = await tx.user.create({
-        data: {
-          email,
-          passwordHash: password_hash,
-          firstName: String(req.body.first_name).trim(),
-          lastName: String(req.body.last_name).trim(),
-          isActive: false
-        }
-      });
-      user_id_to_add = newUser.id;
-
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 48);
-
-      await tx.emailVerificationToken.create({
-        data: {
-          email,
-          token,
-          expiresAt
-        }
-      });
-
-      const verifyLink = `${env.appOrigin}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
-          <p>Hi ${req.body.first_name},</p>
-          <p><strong>${req.currentUser.first_name} ${req.currentUser.last_name}</strong> has invited you to join the <strong>${workspaceName}</strong> workspace.</p>
-          <p>Please click the button below to verify your email address and activate your account:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify & Join Workspace</a>
-          </div>
-          <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This link will expire in 48 hours.</p>
-        </div>
-      `;
-
-      await sendMail({
-        to: email,
-        subject: `Zentrix - Invitation to ${workspaceName}`,
-        html: htmlContent
-      });
-    } else {
-      if (!existingUser) {
-        const error = new Error('No user found with that email address. They must register first.');
-        error.statusCode = 400;
-        throw error;
-      }
-      user_id_to_add = existingUser.id;
-      const userName = existingUser.firstName;
-
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #4f46e5;">New Workspace Added!</h2>
-          <p>Hi ${userName},</p>
-          <p><strong>${req.currentUser.first_name} ${req.currentUser.last_name}</strong> has added you to the <strong>${workspaceName}</strong> workspace.</p>
-          <p>You can now access its projects and tasks from your dashboard.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${env.appOrigin}/dashboard" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
-          </div>
-        </div>
-      `;
-
-      await sendMail({
-        to: email,
-        subject: `Zentrix - New Workspace: ${workspaceName}`,
-        html: htmlContent
-      });
-    }
-
-    const innerCheck = await tx.workspaceMember.findFirst({
-      where: {
-        workspaceId: parseInt(req.params.workspaceId, 10),
-        userId: user_id_to_add
-      }
-    });
-
-    if (innerCheck) {
-      const error = new Error('User is already a member of this workspace');
-      error.statusCode = 409;
-      throw error;
-    }
-
-    const roleFilter = /^[0-9]+$/.test(String(role))
-      ? { id: parseInt(role, 10) }
-      : { name: { equals: String(role) } };
-    const roleRow = await tx.role.findFirst({
-      where: {
-        workspaceId: parseInt(req.params.workspaceId, 10),
-        ...roleFilter
-      }
-    });
-
-    if (!roleRow) {
-      const error = new Error('The selected role does not belong to this workspace');
-      error.payload = { role: 'The selected role does not belong to this workspace' };
-      throw error;
-    }
-
-    const newMember = await tx.workspaceMember.create({
-      data: {
-        workspaceId: parseInt(req.params.workspaceId, 10),
-        userId: user_id_to_add,
-        roleId: roleRow.id,
-        role: roleRow.name
-      },
-      include: {
-        user: true,
-        roleObj: true
-      }
-    });
-
-    return {
-      membership_id: newMember.id,
-      role: newMember.roleObj?.name || newMember.role || 'member',
-      created_at: newMember.createdAt,
-      user_id: newMember.user.id,
-      first_name: newMember.user.firstName,
-      last_name: newMember.user.lastName,
-      email: newMember.user.email
-    };
-  }).catch((error) => {
-    if (error.payload) {
-      return sendValidationError(res, error.payload);
-    }
-    if (error.statusCode) {
-      return sendError(res, error.message, error.statusCode);
-    }
-    throw error;
-  });
-
-  if (res.headersSent) {
-    return undefined;
+  if (recentInviteCount >= 10) {
+    return sendError(res, 'You have sent several invitations recently. Please wait a minute before sending more.', 429);
   }
 
-  return sendSuccess(res, { member }, 201);
+  const rawToken = createInvitationToken();
+  const tokenHash = hashInvitationToken(rawToken);
+  const expiresAt = createInvitationExpiry();
+  const invitationUrl = `${env.appOrigin}/invitations/accept?token=${encodeURIComponent(rawToken)}`;
+  const inviterName = `${req.currentUser.first_name} ${req.currentUser.last_name}`.trim();
+  const message = renderWorkspaceInvitationEmail({
+    inviterName,
+    workspaceName: workspace.name,
+    invitationUrl,
+    appOrigin: env.appOrigin,
+  });
+
+  let result;
+  try {
+    result = await runSerializableTransaction(prisma, async (tx) => {
+      const existingInvitation = await tx.workspaceInvitation.findUnique({
+        where: { unique_workspace_invitation: { workspaceId, email } },
+      });
+
+      // A short resend cooldown prevents accidental double-clicks from flooding the recipient.
+      if (existingInvitation && !existingInvitation.acceptedAt && !existingInvitation.revokedAt &&
+        Date.now() - new Date(existingInvitation.updatedAt).getTime() < 60_000) {
+        const error = new Error('An invitation was just sent to this email. Please wait a minute before resending.');
+        error.statusCode = 429;
+        throw error;
+      }
+
+      const invitationData = {
+        roleId: defaultRole.id,
+        invitedByUserId: req.currentUser.id,
+        tokenHash,
+        expiresAt,
+        acceptedAt: null,
+        revokedAt: null,
+      };
+      const invitation = existingInvitation
+        ? await tx.workspaceInvitation.update({ where: { id: existingInvitation.id }, data: invitationData })
+        : await tx.workspaceInvitation.create({ data: { workspaceId, email, ...invitationData } });
+
+      await tx.activityLog.create({
+        data: {
+          userId: req.currentUser.id,
+          workspaceId,
+          activityType: existingInvitation ? 'workspace_invitation_resent' : 'workspace_invitation_requested',
+          description: `Workspace invitation ${existingInvitation ? 'resent' : 'requested'} for ${email}`,
+          metadata: JSON.stringify({ invitation_id: invitation.id }),
+        },
+      });
+
+      return { invitation, status: existingInvitation ? 'resent' : 'sent' };
+    });
+  } catch (error) {
+    if (error.statusCode) return sendError(res, error.message, error.statusCode);
+    if (error.code === 'P2002') {
+      return sendError(res, 'Another invitation request was processed at the same time. Please try again.', 409);
+    }
+    throw error;
+  }
+
+  try {
+    // External delivery occurs only after the invitation and its audit record commit successfully.
+    await sendMail({
+      to: email,
+      subject: `You're invited to join ${workspace.name} on Zentrix`,
+      html: message.html,
+      text: message.text,
+    });
+  } catch (error) {
+    // Revoke the undispatched token so a failed request never leaves a usable invitation behind.
+    await prisma.$transaction(async (tx) => {
+      await tx.workspaceInvitation.updateMany({
+        where: { id: result.invitation.id, tokenHash, acceptedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.activityLog.create({
+        data: {
+          userId: req.currentUser.id,
+          workspaceId,
+          activityType: 'workspace_invitation_delivery_failed',
+          description: `Workspace invitation delivery failed for ${email}`,
+          metadata: JSON.stringify({ invitation_id: result.invitation.id, provider_error_category: error?.code || 'smtp_error' }),
+        },
+      });
+    });
+    console.error('Workspace invitation delivery failed', { invitationId: result.invitation.id, category: error?.code || 'smtp_error' });
+    return sendError(res, 'The invitation could not be delivered. Please try again.', 503);
+  }
+
+  return sendSuccess(res, {
+    invitation: {
+      email,
+      expires_at: result.invitation.expiresAt,
+      status: result.status,
+    },
+    message: `Invitation ${result.status} successfully. It expires in 48 hours.`,
+  }, 201);
 }));
 
 workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => {

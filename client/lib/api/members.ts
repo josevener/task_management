@@ -26,6 +26,15 @@ export interface WorkspaceMemberResponse {
   member: WorkspaceMember;
 }
 
+export interface WorkspaceInvitationResponse {
+  invitation: {
+    email: string;
+    expires_at: string;
+    status: 'sent' | 'resent';
+  };
+  message: string;
+}
+
 export interface ProjectMembersResponse {
   members: ProjectMember[];
 }
@@ -36,17 +45,9 @@ export async function getWorkspaceMembers(workspaceId: number): Promise<Workspac
 
 export async function addWorkspaceMember(
   workspaceId: number,
-  email: string,
-  roleOrId: string = 'member',
-  action: 'invite' | 'create' = 'invite',
-  additionalData?: { first_name?: string; last_name?: string; password?: string }
-): Promise<WorkspaceMemberResponse> {
-  return apiPost<WorkspaceMemberResponse>(`/workspaces/${workspaceId}/members`, {
-    email,
-    role: roleOrId,
-    action,
-    ...additionalData
-  });
+  email: string
+): Promise<WorkspaceInvitationResponse> {
+  return apiPost<WorkspaceInvitationResponse>(`/workspaces/${workspaceId}/members`, { email });
 }
 
 export async function updateWorkspaceMember(membershipId: number, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {

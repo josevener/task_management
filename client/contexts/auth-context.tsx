@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   authenticated: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials, redirectTo?: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -46,13 +46,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = useCallback(async (credentials: LoginCredentials) => {
+  const login = useCallback(async (credentials: LoginCredentials, redirectTo = '/dashboard') => {
     try {
       const response = await apiLogin(credentials);
       if (response.user) {
         setUser(response.user);
       }
-      router.push('/dashboard');
+      // Only permit local application paths as post-login destinations.
+      const safeRedirect = redirectTo.startsWith('/') && !redirectTo.startsWith('//')
+        ? redirectTo
+        : '/dashboard';
+      router.push(safeRedirect);
     }
     catch (error) {
       throw error;

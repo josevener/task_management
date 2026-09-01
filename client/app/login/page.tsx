@@ -6,7 +6,7 @@
  * User authentication page.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layers, Loader2, Eye, EyeOff } from 'lucide-react';
@@ -28,13 +28,20 @@ export default function LoginPage() {
   const { showToast } = useToast();
   const router = useRouter(); // Keeping router just in case, though currently unused in component
 
+  useEffect(() => {
+    // Invitation links may prefill the invited identity without making it editable elsewhere.
+    const invitedEmail = new URLSearchParams(window.location.search).get('email');
+    if (invitedEmail) setEmail(invitedEmail);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrors({});
 
     try {
-      await login({ email, password });
+      const nextPath = new URLSearchParams(window.location.search).get('next') || '/dashboard';
+      await login({ email, password }, nextPath);
       showToast('Login successful!', 'success');
     }
     catch (error) {

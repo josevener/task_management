@@ -180,7 +180,7 @@ axios.interceptors.response.use(
       if (typeof window !== 'undefined') {
         const pathname = window.location.pathname;
         const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
-        const isPublicPath = publicPaths.includes(pathname);
+        const isPublicPath = publicPaths.includes(pathname) || pathname.startsWith('/invitations/');
 
         // Only redirect if not already on a public page to prevent loops
         if (!isPublicPath) {
