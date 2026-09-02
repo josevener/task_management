@@ -148,12 +148,13 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
 
   if (!isMounted) {
     return (
-      <div className="flex h-full gap-6 overflow-x-auto pb-2.5 items-stretch">
+      <div className="grid min-h-[32rem] w-full grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Desktop keeps every status visible; smaller screens reflow the columns instead of scrolling sideways. */}
         {COLUMNS.map((col) => {
           const tasks = boardData[col.id] || [];
 
           return (
-            <div key={col.id} className="flex-1 min-w-[280px] max-w-[420px] flex flex-col h-full max-h-full pb-2">
+            <div key={col.id} className="flex min-h-[30rem] min-w-0 flex-col pb-2">
               {/* Column Header */}
               <div className="flex items-center justify-between mb-3 px-1.5 shrink-0">
                 <h3 className="font-semibold text-sm text-slate-700">{col.title}</h3>
@@ -173,12 +174,13 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full gap-6 overflow-x-auto pb-2.5 items-stretch">
+      <div className="grid min-h-[32rem] w-full grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Desktop keeps every status visible; smaller screens reflow the columns instead of scrolling sideways. */}
         {COLUMNS.map((col) => {
           const tasks = boardData[col.id] || [];
 
           return (
-            <div key={col.id} className="flex-1 min-w-[280px] max-w-[420px] flex flex-col h-full max-h-full pb-2">
+            <div key={col.id} className="flex min-h-[30rem] min-w-0 flex-col pb-2">
               {/* Column Header */}
               <div className="flex items-center justify-between mb-3 px-1.5 shrink-0">
                 <h3 className="font-semibold text-sm text-slate-700">{col.title}</h3>
@@ -193,7 +195,7 @@ export function KanbanBoard({ initialTasks, projectId, onTaskClick }: KanbanBoar
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`flex-1 rounded-xl p-3 min-h-[150px] border ${col.bg} overflow-y-auto custom-scrollbar transition-all duration-200 ${
+                    className={`flex-1 min-h-[150px] rounded-xl border p-3 ${col.bg} transition-all duration-200 ${
                       snapshot.isDraggingOver
                         ? "ring-2 ring-blue-400 ring-inset bg-blue-50/40 border-blue-200 border-dashed"
                         : ""
