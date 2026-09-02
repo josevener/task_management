@@ -15,6 +15,7 @@ async function attachCurrentUser(req, _res, next) {
       },
       select: {
         id: true,
+        publicId: true,
         email: true,
         firstName: true,
         lastName: true,
@@ -26,6 +27,7 @@ async function attachCurrentUser(req, _res, next) {
     if (user) {
       req.currentUser = {
         id: user.id,
+        public_id: user.publicId,
         email: user.email,
         first_name: user.firstName,
         last_name: user.lastName,

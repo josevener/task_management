@@ -8,6 +8,7 @@ datasource db {
 
 model Organization {
   id                 Int         @id @default(autoincrement())
+  publicId           String      @unique @map("public_id") @db.VarChar(40)
   name               String      @db.VarChar(255)
   slug               String      @unique @db.VarChar(255)
   logoUrl            String?     @map("logo_url") @db.VarChar(500)
@@ -32,6 +33,7 @@ model Organization {
 
 model User {
   id                       Int                   @id @default(autoincrement())
+  publicId                 String                @unique @map("public_id") @db.VarChar(40)
   email                    String                @unique @db.VarChar(255)
   passwordHash             String                @map("password_hash") @db.VarChar(255)
   firstName                String                @map("first_name") @db.VarChar(100)
@@ -63,6 +65,7 @@ model User {
 
 model Workspace {
   id             Int                   @id @default(autoincrement())
+  publicId       String                @unique @map("public_id") @db.VarChar(40)
   organizationId Int                   @map("organization_id")
   name           String                @db.VarChar(255)
   slug           String                @db.VarChar(255)
@@ -90,6 +93,7 @@ model Workspace {
 
 model WorkspaceMember {
   id          Int       @id @default(autoincrement())
+  publicId    String    @unique @map("public_id") @db.VarChar(40)
   workspaceId Int       @map("workspace_id")
   userId      Int       @map("user_id")
   role        String    @default("member") @db.VarChar(50)
@@ -110,6 +114,7 @@ model WorkspaceMember {
 
 model Project {
   id                 Int             @id @default(autoincrement())
+  publicId           String          @unique @map("public_id") @db.VarChar(40)
   workspaceId        Int             @map("workspace_id")
   name               String          @db.VarChar(255)
   description        String?         @db.Text
@@ -138,6 +143,7 @@ model Project {
 
 model ProjectMember {
   id        Int       @id @default(autoincrement())
+  publicId  String    @unique @map("public_id") @db.VarChar(40)
   projectId Int       @map("project_id")
   userId    Int       @map("user_id")
   role      String?   @default("contributor") @db.VarChar(50)
@@ -154,6 +160,7 @@ model ProjectMember {
 
 model Task {
   id             Int                 @id @default(autoincrement())
+  publicId       String              @unique @map("public_id") @db.VarChar(40)
   projectId      Int                 @map("project_id")
   parentTaskId   Int?                @map("parent_task_id")
   title          String              @db.VarChar(500)
@@ -197,6 +204,7 @@ model Task {
 
 model TaskDependency {
   id              Int       @id @default(autoincrement())
+  publicId        String    @unique @map("public_id") @db.VarChar(40)
   taskId          Int       @map("task_id")
   dependsOnTaskId Int       @map("depends_on_task_id")
   dependencyType  String?   @default("finish_to_start") @map("dependency_type") @db.VarChar(50)
@@ -212,6 +220,7 @@ model TaskDependency {
 
 model TaskTag {
   id          Int                 @id @default(autoincrement())
+  publicId    String              @unique @map("public_id") @db.VarChar(40)
   workspaceId Int                 @map("workspace_id")
   name        String              @db.VarChar(100)
   color       String?             @default("#3B82F6") @db.VarChar(7)
@@ -227,6 +236,7 @@ model TaskTag {
 
 model TaskTagAssignment {
   id        Int       @id @default(autoincrement())
+  publicId  String    @unique @map("public_id") @db.VarChar(40)
   taskId    Int       @map("task_id")
   tagId     Int       @map("tag_id")
   createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
@@ -241,6 +251,7 @@ model TaskTagAssignment {
 
 model TaskFollower {
   id        Int       @id @default(autoincrement())
+  publicId  String    @unique @map("public_id") @db.VarChar(40)
   taskId    Int       @map("task_id")
   userId    Int       @map("user_id")
   createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
@@ -255,6 +266,7 @@ model TaskFollower {
 
 model Comment {
   id              Int              @id @default(autoincrement())
+  publicId        String           @unique @map("public_id") @db.VarChar(40)
   taskId          Int              @map("task_id")
   parentCommentId Int?             @map("parent_comment_id")
   userId          Int              @map("user_id")
@@ -277,6 +289,7 @@ model Comment {
 
 model CommentMention {
   id              Int       @id @default(autoincrement())
+  publicId        String    @unique @map("public_id") @db.VarChar(40)
   commentId       Int       @map("comment_id")
   mentionedUserId Int       @map("mentioned_user_id")
   createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
@@ -291,6 +304,7 @@ model CommentMention {
 
 model ActivityLog {
   id           Int        @id @default(autoincrement())
+  publicId     String     @unique @map("public_id") @db.VarChar(40)
   userId       Int?       @map("user_id")
   workspaceId  Int?       @map("workspace_id")
   projectId    Int?       @map("project_id")
@@ -315,6 +329,7 @@ model ActivityLog {
 
 model Notification {
   id                 Int        @id @default(autoincrement())
+  publicId           String     @unique @map("public_id") @db.VarChar(40)
   userId             Int        @map("user_id")
   type               String     @db.VarChar(100)
   title              String     @db.VarChar(255)
@@ -342,6 +357,7 @@ model Notification {
 
 model Attachment {
   id         Int       @id @default(autoincrement())
+  publicId   String    @unique @map("public_id") @db.VarChar(40)
   taskId     Int?      @map("task_id")
   commentId  Int?      @map("comment_id")
   uploadedBy Int       @map("uploaded_by")
@@ -363,6 +379,7 @@ model Attachment {
 
 model Permission {
   id              Int              @id @default(autoincrement())
+  publicId        String           @unique @map("public_id") @db.VarChar(40)
   module          String           @db.VarChar(50)
   action          String           @unique @db.VarChar(100)
   description     String?          @db.Text
@@ -374,6 +391,7 @@ model Permission {
 
 model Role {
   id              Int                   @id @default(autoincrement())
+  publicId        String                @unique @map("public_id") @db.VarChar(40)
   workspaceId     Int                   @map("workspace_id")
   name            String                @db.VarChar(100)
   description     String?               @db.Text
@@ -391,6 +409,7 @@ model Role {
 
 model WorkspaceInvitation {
   id              Int       @id @default(autoincrement())
+  publicId        String    @unique @map("public_id") @db.VarChar(40)
   workspaceId     Int       @map("workspace_id")
   email           String    @db.VarChar(255)
   roleId          Int       @map("role_id")
@@ -415,6 +434,7 @@ model WorkspaceInvitation {
 
 model RolePermission {
   id           Int        @id @default(autoincrement())
+  publicId     String     @unique @map("public_id") @db.VarChar(40)
   roleId       Int        @map("role_id")
   permissionId Int        @map("permission_id")
   createdAt    DateTime?  @default(now()) @map("created_at") @db.Timestamp(0)
@@ -428,6 +448,7 @@ model RolePermission {
 
 model EmailVerificationToken {
   id        Int       @id @default(autoincrement())
+  publicId  String    @unique @map("public_id") @db.VarChar(40)
   email     String    @db.VarChar(255)
   token     String    @db.VarChar(64)
   expiresAt DateTime  @map("expires_at") @db.Timestamp(0)
@@ -440,6 +461,7 @@ model EmailVerificationToken {
 
 model EmailOtpVerification {
   id        Int      @id @default(autoincrement())
+  publicId  String   @unique @map("public_id") @db.VarChar(40)
   email     String   @db.VarChar(255)
   otpCode   String   @map("otp_code") @db.VarChar(50)
   expiresAt DateTime @map("expires_at") @db.Timestamp(0)
@@ -451,6 +473,7 @@ model EmailOtpVerification {
 
 model PasswordReset {
   id        Int      @id @default(autoincrement())
+  publicId  String   @unique @map("public_id") @db.VarChar(40)
   email     String   @db.VarChar(255)
   token     String   @db.VarChar(255)
   expiresAt DateTime @map("expires_at") @db.Timestamp(0)
@@ -465,6 +488,7 @@ model PasswordReset {
 // Keeping the model here prevents future Prisma migrations from treating the table as drift.
 model Session {
   sid       String   @id @db.VarChar(255)
+  publicId  String   @unique @map("public_id") @db.VarChar(40)
   data      String   @db.LongText
   expiresAt DateTime @map("expires_at") @db.DateTime(0)
 

@@ -15,14 +15,14 @@ export default function CreateTaskPage() {
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
-  const projectId = Number(params.id);
+  const projectId = params.id as string;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
 
   useEffect(() => {
-    if (isNaN(projectId)) return;
+    if (!projectId) return;
     getProjectEligibleMembers(projectId)
       .then((res) => setMembers(res.members))
       .catch(() => showToast("We couldn't load project members.", "error"))
@@ -33,7 +33,7 @@ export default function CreateTaskPage() {
     try {
       setIsSubmitting(true);
       await createTask({
-        project_id: projectId,
+        project_public_id: projectId,
         title: data.title,
         description: data.description,
         status: data.status,
@@ -41,7 +41,7 @@ export default function CreateTaskPage() {
         due_date: data.due_date || null,
         assignee_id:
           data.assignee_id && data.assignee_id !== "none"
-            ? Number(data.assignee_id)
+            ? data.assignee_id
             : null,
       });
 

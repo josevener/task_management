@@ -10,7 +10,7 @@ export async function getOrganizations(): Promise<OrganizationsResponse> {
   return apiGet<OrganizationsResponse>('/organizations/');
 }
 
-export async function getOrganization(organizationId: number): Promise<OrganizationResponse> {
+export async function getOrganization(organizationId: string | number): Promise<OrganizationResponse> {
   return apiGet<OrganizationResponse>(`/organizations/${organizationId}`);
 }
 
@@ -32,18 +32,18 @@ export interface UpdateOrganizationData {
   logo_url?: string;
 }
 
-export async function updateOrganization(organizationId: number, data: UpdateOrganizationData): Promise<OrganizationResponse> {
+export async function updateOrganization(organizationId: string | number, data: UpdateOrganizationData): Promise<OrganizationResponse> {
   return apiPatch<OrganizationResponse>(`/organizations/${organizationId}`, data);
 }
 
-export async function getOrganizationMembers(organizationId: number): Promise<OrganizationMembersResponse> {
+export async function getOrganizationMembers(organizationId: string | number): Promise<OrganizationMembersResponse> {
   return apiGet<OrganizationMembersResponse>(`/organizations/${organizationId}/members`);
 }
 
-export async function transferOrganizationOwnership(organizationId: number, newOwnerId: number): Promise<{ message: string }> {
+export async function transferOrganizationOwnership(organizationId: string | number, newOwnerId: string | number): Promise<{ message: string }> {
   return apiPost<{ message: string }>(`/organizations/${organizationId}/transfer-ownership`, { new_owner_id: newOwnerId });
 }
 
-export async function deleteOrganization(organizationId: number): Promise<{ message: string }> {
+export async function deleteOrganization(organizationId: string | number): Promise<{ message: string }> {
   return apiDelete<{ message: string }>(`/organizations/${organizationId}`);
 }

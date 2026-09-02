@@ -1,5 +1,6 @@
 const session = require('express-session');
 const mariadb = require('mariadb');
+const { createPublicId } = require('./public-id');
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -38,8 +39,8 @@ class MariaDbSessionStore extends session.Store {
   set(sid, sessionData, callback) {
     const expiresAt = new Date(sessionData.cookie?.expires || Date.now() + 7 * 24 * 60 * 60 * 1000);
     this.pool.query(
-      'INSERT INTO sessions (sid, data, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), expires_at = VALUES(expires_at)',
-      [sid, JSON.stringify(sessionData), expiresAt]
+      'INSERT INTO sessions (sid, public_id, data, expires_at) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), expires_at = VALUES(expires_at)',
+      [sid, createPublicId('Session'), JSON.stringify(sessionData), expiresAt]
     ).then(() => callback?.()).catch((error) => callback?.(error));
   }
 

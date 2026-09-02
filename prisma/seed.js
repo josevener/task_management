@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const { PrismaMariaDb } = require('@prisma/adapter-mariadb');
 require('dotenv').config();
 const { PERMISSIONS } = require('../utils/rbac');
+const { createPublicId } = require('../utils/public-id');
 
 const adapter = new PrismaMariaDb({
   host: process.env.DB_HOST || 'localhost',
@@ -18,7 +19,10 @@ async function main() {
     await prisma.permission.upsert({
       where: { action: perm.action },
       update: {},
-      create: perm
+      create: {
+        ...perm,
+        publicId: createPublicId('Permission')
+      }
     });
   }
   console.log('Seeding finished successfully.');

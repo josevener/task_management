@@ -16,7 +16,7 @@ export default function EditWorkspacePage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { workspaces, refreshWorkspaces, loading } = useWorkspace();
-  const workspaceId = Number(params.id);
+  const workspaceId = params.id as string;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [workspace, setWorkspace] = useState<any>(null);

@@ -16,7 +16,7 @@ import Link from "next/link";
 export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
-  const projectId = parseInt(params.id as string);
+  const projectId = params.id as string;
   const { activeWorkspace, hasPermission } = useWorkspace();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -26,12 +26,12 @@ export default function ProjectDetailsPage() {
 
   useEffect(() => {
     async function loadProjectData() {
-      if (!activeWorkspace || isNaN(projectId)) return;
+      if (!activeWorkspace || !projectId) return;
 
       try {
         setLoading(true);
         const [projectRes, tasksRes] = await Promise.all([
-          getProject(activeWorkspace.id, projectId),
+          getProject(projectId),
           getTasks(projectId)
         ]);
 

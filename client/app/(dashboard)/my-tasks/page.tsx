@@ -175,7 +175,7 @@ export default function MyTasksPage() {
   }, [groupBy, groupedTasks]);
 
   const handleStatusChange = async (
-    taskId: number,
+    taskId: string,
     newStatus: Task["status"],
   ) => {
     const previousTasks = tasks;

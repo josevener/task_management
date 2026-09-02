@@ -27,7 +27,7 @@ export default function NewProjectPage() {
     try {
       setIsSubmitting(true);
       await createProject({
-        workspace_id: activeWorkspace.id,
+        workspace_public_id: activeWorkspace.id,
         name: data.name,
         description: data.description,
         status: data.status,

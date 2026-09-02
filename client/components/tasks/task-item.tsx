@@ -9,7 +9,7 @@ import type { Task } from "@/lib/types";
 interface TaskItemProps {
   task: Task;
   viewMode: "list" | "grid";
-  onStatusChange?: (taskId: number, newStatus: Task["status"]) => void;
+  onStatusChange?: (taskId: string, newStatus: Task["status"]) => void;
   canUpdateStatus?: boolean;
   showProjectName?: boolean;
 }

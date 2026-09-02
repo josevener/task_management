@@ -39,15 +39,15 @@ export interface ProjectMembersResponse {
   members: ProjectMember[];
 }
 
-export async function getWorkspaceMembers(workspaceId: number): Promise<WorkspaceMembersResponse> {
-  return apiGet<WorkspaceMembersResponse>(`/workspaces/${workspaceId}/members`);
+export async function getWorkspaceMembers(workspacePublicId: string | number): Promise<WorkspaceMembersResponse> {
+  return apiGet<WorkspaceMembersResponse>(`/workspaces/${workspacePublicId}/members`);
 }
 
 export async function addWorkspaceMember(
-  workspaceId: number,
+  workspacePublicId: string | number,
   email: string
 ): Promise<WorkspaceInvitationResponse> {
-  return apiPost<WorkspaceInvitationResponse>(`/workspaces/${workspaceId}/members`, { email });
+  return apiPost<WorkspaceInvitationResponse>(`/workspaces/${workspacePublicId}/members`, { email });
 }
 
 export async function updateWorkspaceMember(membershipId: number, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
@@ -58,6 +58,6 @@ export async function removeWorkspaceMember(membershipId: number): Promise<{ mes
   return apiDelete<{ message: string }>(`/workspaces/members/${membershipId}`);
 }
 
-export async function getProjectEligibleMembers(projectId: number): Promise<ProjectMembersResponse> {
-  return apiGet<ProjectMembersResponse>(`/projects/${projectId}/members`);
+export async function getProjectEligibleMembers(projectPublicId: string | number): Promise<ProjectMembersResponse> {
+  return apiGet<ProjectMembersResponse>(`/projects/${projectPublicId}/members`);
 }

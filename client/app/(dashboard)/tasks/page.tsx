@@ -117,7 +117,7 @@ export default function WorkspaceTasksPage() {
     return Object.keys(groupedTasks).sort();
   }, [groupBy, groupedTasks]);
 
-  const handleStatusChange = async (taskId: number, newStatus: Task["status"]) => {
+  const handleStatusChange = async (taskId: string, newStatus: Task["status"]) => {
     const previousTasks = tasks;
     // Update immediately, then restore the previous workspace snapshot if the server rejects the change.
     setTasks((current) => current.map((task) => task.id === taskId ? { ...task, status: newStatus } : task));

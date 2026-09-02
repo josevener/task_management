@@ -22,7 +22,7 @@ export default function EditOrganizationPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { refreshWorkspaces } = useWorkspace();
-  const organizationId = Number(params.id);
+  const organizationId = params.id as string;
 
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,7 +31,7 @@ export default function EditOrganizationPage() {
 
   useEffect(() => {
     async function fetchOrg() {
-      if (isNaN(organizationId)) return;
+      if (!organizationId) return;
       try {
         const res = await getOrganization(organizationId);
         if (res.organization) {

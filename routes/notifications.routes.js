@@ -4,10 +4,12 @@ const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendSuccess, sendError } = require('../utils/responses');
 const sseManager = require('../utils/sse-manager');
+const { publicIdParam } = require('../utils/public-id');
 
 const notificationsRouter = express.Router();
 
 notificationsRouter.use(attachCurrentUser, requireAuth);
+notificationsRouter.param('id', publicIdParam(prisma, 'Notification'));
 
 // SSE endpoint for real-time notifications
 notificationsRouter.get('/stream', (req, res) => {
@@ -37,13 +39,13 @@ notificationsRouter.get('/', asyncHandler(async (req, res) => {
     },
     include: {
       relatedWorkspace: {
-        select: { name: true }
+        select: { name: true, publicId: true }
       },
       relatedProject: {
-        select: { name: true }
+        select: { name: true, publicId: true }
       },
       relatedTask: {
-        select: { title: true }
+        select: { title: true, publicId: true }
       }
     },
     orderBy: {
@@ -53,14 +55,14 @@ notificationsRouter.get('/', asyncHandler(async (req, res) => {
   });
 
   const mappedNotifications = notifications.map(n => ({
-    id: n.id,
-    user_id: n.userId,
+    id: n.publicId,
+    public_id: n.publicId,
     type: n.type,
     title: n.title,
     message: n.message,
-    related_workspace_id: n.relatedWorkspaceId,
-    related_project_id: n.relatedProjectId,
-    related_task_id: n.relatedTaskId,
+    related_workspace_id: n.relatedWorkspace?.publicId || null,
+    related_project_id: n.relatedProject?.publicId || null,
+    related_task_id: n.relatedTask?.publicId || null,
     is_read: n.isRead,
     read_at: n.readAt,
     created_at: n.createdAt,

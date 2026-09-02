@@ -4,10 +4,13 @@ const { attachCurrentUser, requireAuth, checkPermission } = require('../middlewa
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { isValidDate } = require('../utils/validation');
+const { publicIdParam, resolveInternalId } = require('../utils/public-id');
 
 const projectsRouter = express.Router();
 
 projectsRouter.use(attachCurrentUser, requireAuth);
+projectsRouter.param('id', publicIdParam(prisma, 'Project'));
+projectsRouter.param('projectId', publicIdParam(prisma, 'Project'));
 
 function mapProject(p) {
   if (!p) return null;
@@ -16,12 +19,15 @@ function mapProject(p) {
   const progress_percentage = total_tasks > 0 ? Math.round((completed_tasks * 100) / total_tasks) : 0;
 
   return {
-    id: p.id,
-    workspace_id: p.workspaceId,
+    id: p.publicId,
+    public_id: p.publicId,
+    workspace_id: p.workspace?.publicId || undefined,
+    workspace_public_id: p.workspace?.publicId || undefined,
     name: p.name,
     description: p.description,
     status: p.status,
-    owner_id: p.ownerId,
+    owner_id: p.owner?.publicId || undefined,
+    owner_public_id: p.owner?.publicId || undefined,
     start_date: p.startDate,
     end_date: p.endDate,
     health_status: p.healthStatus,
@@ -39,10 +45,12 @@ function mapProject(p) {
 }
 
 projectsRouter.get('/', asyncHandler(async (req, res) => {
-  if (req.query.workspace_id) {
+  if (req.query.workspace_public_id) {
+    const workspaceId = await resolveInternalId(prisma, 'Workspace', req.query.workspace_public_id, 'workspace_public_id');
+    if (!workspaceId) return sendError(res, 'Workspace access denied', 403);
     const workspaceMember = await prisma.workspaceMember.findFirst({
       where: {
-        workspaceId: parseInt(req.query.workspace_id, 10),
+        workspaceId,
         userId: req.currentUser.id,
       },
       select: { role: true }
@@ -54,10 +62,11 @@ projectsRouter.get('/', asyncHandler(async (req, res) => {
 
     const projects = await prisma.project.findMany({
       where: {
-        workspaceId: parseInt(req.query.workspace_id, 10),
+        workspaceId,
       },
       include: {
         owner: true,
+        workspace: { select: { publicId: true } },
         tasks: {
           select: {
             id: true,
@@ -133,7 +142,10 @@ projectsRouter.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 projectsRouter.post('/', asyncHandler(async (req, res) => {
-  const workspace_id = req.body.workspace_id;
+  const workspace_public_id = req.body.workspace_public_id;
+  const workspace_id = workspace_public_id
+    ? await resolveInternalId(prisma, 'Workspace', workspace_public_id, 'workspace_public_id')
+    : null;
   const name = String(req.body.name || '').trim();
   const description = String(req.body.description || '').trim();
   const status = req.body.status || 'active';
@@ -143,7 +155,7 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
   const errors = {};
 
   if (!workspace_id) {
-    errors.workspace_id = 'Workspace ID is required';
+    errors.workspace_public_id = 'Workspace public ID is required';
   }
 
   if (!name) {
@@ -172,7 +184,7 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
   if (workspace_id) {
     const isMember = await prisma.workspaceMember.findFirst({
       where: {
-        workspaceId: parseInt(workspace_id, 10),
+        workspaceId: workspace_id,
         userId: req.currentUser.id
       },
       select: { id: true }
@@ -195,7 +207,7 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
   const project = await prisma.$transaction(async (tx) => {
     const newProject = await tx.project.create({
       data: {
-        workspaceId: parseInt(workspace_id, 10),
+        workspaceId: workspace_id,
         name,
         description: description || null,
         status,
@@ -217,7 +229,7 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
     await tx.activityLog.create({
       data: {
         userId: req.currentUser.id,
-        workspaceId: parseInt(workspace_id, 10),
+        workspaceId: workspace_id,
         projectId: newProject.id,
         activityType: 'project_created',
         description: `Project '${name}' was created`
@@ -227,7 +239,8 @@ projectsRouter.post('/', asyncHandler(async (req, res) => {
     const projectWithRelations = await tx.project.findUnique({
       where: { id: newProject.id },
       include: {
-        owner: true
+        owner: true,
+        workspace: { select: { publicId: true } }
       }
     });
 

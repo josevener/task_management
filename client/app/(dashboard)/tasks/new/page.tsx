@@ -21,7 +21,7 @@ export default function GlobalCreateTaskPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
 
@@ -41,16 +41,15 @@ export default function GlobalCreateTaskPage() {
   }, [showToast]);
 
   const handleProjectChange = async (projectId: string) => {
-    const id = Number(projectId);
-    if (isNaN(id)) {
+    if (!projectId || projectId === "none") {
       setMembers([]);
       setSelectedProjectId(null);
       return;
     }
 
-    setSelectedProjectId(id);
+    setSelectedProjectId(projectId);
     try {
-      const res = await getProjectEligibleMembers(id);
+      const res = await getProjectEligibleMembers(projectId);
       setMembers(res.members || []);
     } catch (error) {
       console.log("Failed to fetch eligible members", error);
@@ -60,8 +59,8 @@ export default function GlobalCreateTaskPage() {
   };
 
   const handleSubmit = async (data: TaskFormData) => {
-    const projectId = Number(data.project_id);
-    if (isNaN(projectId)) {
+    const projectId = data.project_id;
+    if (!projectId || projectId === "none") {
       showToast("Please select a project", "error");
       return;
     }
@@ -70,7 +69,7 @@ export default function GlobalCreateTaskPage() {
       setIsSubmitting(true);
 
       await createTask({
-        project_id: projectId,
+        project_public_id: projectId,
         title: data.title,
         description: data.description,
         status: data.status,
@@ -78,7 +77,7 @@ export default function GlobalCreateTaskPage() {
         due_date: data.due_date || null,
         assignee_id:
           data.assignee_id && data.assignee_id !== "none"
-            ? Number(data.assignee_id)
+            ? data.assignee_id
             : null,
       });
 

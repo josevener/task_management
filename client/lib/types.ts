@@ -6,7 +6,8 @@
 
 // User types
 export interface User {
-  id: number;
+  id: string;
+  public_id: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -16,21 +17,24 @@ export interface User {
 
 // Organization types
 export interface Organization {
-  id: number;
+  id: string;
+  public_id: string;
   name: string;
   slug: string;
   logo_url?: string;
   subscription_tier: string;
   subscription_status?: string;
-  owner_id?: number;
+  owner_id?: string | number;
   created_at: string;
   updated_at?: string;
 }
 
 // Workspace types
 export interface Workspace {
-  id: number;
-  organization_id: number;
+  id: string;
+  public_id: string;
+  organization_id?: string;
+  organization_public_id?: string;
   name: string;
   slug: string;
   description?: string;
@@ -45,12 +49,15 @@ export interface Workspace {
 
 // Project types
 export interface Project {
-  id: number;
-  workspace_id: number;
+  id: string;
+  public_id: string;
+  workspace_id?: string;
+  workspace_public_id?: string;
   name: string;
   description?: string;
   status: 'active' | 'on_hold' | 'completed' | 'archived';
-  owner_id: number;
+  owner_id?: string;
+  owner_public_id?: string;
   start_date?: string;
   end_date?: string;
   progress_percentage: number;
@@ -68,24 +75,28 @@ export interface Project {
 
 // Task types
 export interface TaskTag {
-  id: number;
+  id: string;
+  public_id: string;
   name: string;
   color: string;
 }
 
 export interface Task {
-  id: number;
-  project_id: number;
-  parent_task_id?: number;
+  id: string;
+  public_id: string;
+  project_id?: string;
+  project_public_id?: string;
+  parent_task_id?: string;
   title: string;
   description?: string;
   status: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  assignee_id?: number;
+  assignee_id?: string;
+  assignee_public_id?: string;
   start_date?: string;
   due_date?: string;
   position: number;
-  created_by: number;
+  created_by?: string;
   created_at: string;
   updated_at?: string;
   assignee_first_name?: string;
@@ -94,7 +105,7 @@ export interface Task {
   creator_first_name?: string;
   creator_last_name?: string;
   creator_email?: string;
-  assigned_by?: number;
+  assigned_by?: string;
   assigner_first_name?: string;
   assigner_last_name?: string;
   project_name?: string;

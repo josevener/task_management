@@ -5,19 +5,22 @@ const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
 const { createRoleWithPermissions } = require('../utils/rbac');
+const { publicIdParam } = require('../utils/public-id');
 
 const organizationsRouter = express.Router();
 organizationsRouter.use(attachCurrentUser, requireAuth);
+organizationsRouter.param('id', publicIdParam(prisma, 'Organization'));
 
 function mapOrganization(org) {
   if (!org) return null;
   return {
-    id: org.id,
+    id: org.publicId,
+    public_id: org.publicId,
     name: org.name,
     slug: org.slug,
     logo_url: org.logoUrl,
     subscription_tier: org.subscriptionTier,
-    owner_id: org.ownerId,
+    owner_id: undefined,
     timezone: org.timezone,
     default_language: org.defaultLanguage,
     date_format: org.dateFormat,

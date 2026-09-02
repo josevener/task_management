@@ -1,19 +1,20 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
 import type { WorkspacesResponse, WorkspaceResponse } from '../types';
 
-export async function getWorkspaces(organizationId?: number): Promise<WorkspacesResponse> {
-  const url = organizationId
-    ? `/workspaces/?organization_id=${organizationId}`
+export async function getWorkspaces(organizationPublicId?: string): Promise<WorkspacesResponse> {
+  const url = organizationPublicId
+    ? `/workspaces/?organization_public_id=${organizationPublicId}`
     : '/workspaces/';
   return apiGet<WorkspacesResponse>(url);
 }
 
-export async function getWorkspace(id: number): Promise<WorkspaceResponse> {
+export async function getWorkspace(id: string): Promise<WorkspaceResponse> {
   return apiGet<WorkspaceResponse>(`/workspaces/${id}`);
 }
 
 export interface CreateWorkspaceData {
-  organization_id: number;
+  organization_public_id?: string;
+  organization_id?: string | number;
   name: string;
   slug?: string;
   description?: string;
@@ -31,10 +32,10 @@ export interface UpdateWorkspaceData {
   color_theme?: string;
 }
 
-export async function updateWorkspace(id: number, data: UpdateWorkspaceData): Promise<WorkspaceResponse> {
+export async function updateWorkspace(id: string, data: UpdateWorkspaceData): Promise<WorkspaceResponse> {
   return apiPatch<WorkspaceResponse>(`/workspaces/${id}`, data);
 }
 
-export async function deleteWorkspace(id: number): Promise<{ message: string }> {
+export async function deleteWorkspace(id: string): Promise<{ message: string }> {
   return apiDelete<{ message: string }>(`/workspaces/${id}`);
 }

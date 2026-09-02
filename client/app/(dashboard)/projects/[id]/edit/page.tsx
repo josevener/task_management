@@ -16,7 +16,7 @@ export default function EditProjectPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { activeWorkspace, loading: wsLoading } = useWorkspace();
-  const projectId = Number(params.id);
+  const projectId = params.id as string;
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,10 +30,10 @@ export default function EditProjectPage() {
         router.push("/projects");
         return;
       }
-      if (isNaN(projectId)) return;
+      if (!projectId) return;
 
       try {
-        const res = await getProject(activeWorkspace.id, projectId);
+        const res = await getProject(projectId);
         if (res.project) {
           setProject(res.project);
         }

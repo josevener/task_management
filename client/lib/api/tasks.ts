@@ -1,29 +1,30 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from '../api-client';
 import type { TasksResponse, TaskResponse } from '../types';
 
-export async function getTasks(projectId: number): Promise<TasksResponse> {
-  return apiGet<TasksResponse>(`/tasks/?project_id=${projectId}`);
+export async function getTasks(projectPublicId: string | number): Promise<TasksResponse> {
+  return apiGet<TasksResponse>(`/tasks/?project_public_id=${projectPublicId}`);
 }
 
-export async function getMyTasks(assignee_id: number): Promise<TasksResponse> {
-  return apiGet<TasksResponse>(`/tasks/?assignee_id=${assignee_id}`);
+export async function getMyTasks(assigneePublicId: string): Promise<TasksResponse> {
+  return apiGet<TasksResponse>(`/tasks/?assignee_public_id=${assigneePublicId}`);
 }
 
-export async function getWorkspaceTasks(workspaceId: number): Promise<TasksResponse> {
-  return apiGet<TasksResponse>(`/tasks/?workspace_id=${workspaceId}`);
+export async function getWorkspaceTasks(workspacePublicId: string | number): Promise<TasksResponse> {
+  return apiGet<TasksResponse>(`/tasks/?workspace_public_id=${workspacePublicId}`);
 }
 
-export async function getTask(projectId: number, taskId: number): Promise<TaskResponse> {
-  return apiGet<TaskResponse>(`/tasks/${taskId}`);
+export async function getTask(taskPublicId: string | number, legacyTaskId?: string | number): Promise<TaskResponse> {
+  return apiGet<TaskResponse>(`/tasks/${legacyTaskId ?? taskPublicId}`);
 }
 
 export interface CreateTaskData {
-  project_id: number;
+  project_public_id?: string | number;
+  project_id?: string | number;
   title: string;
   description?: string;
   status?: string;
   priority?: string;
-  assignee_id?: number | null;
+  assignee_id?: string | number | null;
   due_date?: string | null;
 }
 
@@ -41,18 +42,18 @@ export interface UpdateTaskData {
   position?: number;
 }
 
-export async function updateTask(taskId: number, data: UpdateTaskData): Promise<TaskResponse> {
-  return apiPatch<TaskResponse>(`/tasks/${taskId}`, data);
+export async function updateTask(taskPublicId: string | number, data: UpdateTaskData): Promise<TaskResponse> {
+  return apiPatch<TaskResponse>(`/tasks/${taskPublicId}`, data);
 }
 
-export async function updateTaskStatus(taskId: number, status: string, position?: number): Promise<TaskResponse> {
+export async function updateTaskStatus(taskPublicId: string | number, status: string, position?: number): Promise<TaskResponse> {
   const payload: { status: string; position?: number } = { status };
   if (position !== undefined) {
     payload.position = position;
   }
-  return apiPatch<TaskResponse>(`/tasks/${taskId}`, payload);
+  return apiPatch<TaskResponse>(`/tasks/${taskPublicId}`, payload);
 }
 
-export async function deleteTask(taskId: number): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/tasks/${taskId}`);
+export async function deleteTask(taskPublicId: string | number): Promise<{ message: string }> {
+  return apiDelete<{ message: string }>(`/tasks/${taskPublicId}`);
 }

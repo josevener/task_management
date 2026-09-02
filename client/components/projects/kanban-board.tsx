@@ -39,7 +39,7 @@ export const COLUMNS = [
 
 interface KanbanBoardProps {
   initialTasks: Task[];
-  projectId: number;
+  projectId: string;
   onTaskClick?: (task: Task) => void;
 }
 

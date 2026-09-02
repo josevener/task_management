@@ -88,7 +88,8 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     user: {
-      id: user.id,
+      id: user.publicId,
+      public_id: user.publicId,
       email: user.email,
       first_name: user.firstName,
       last_name: user.lastName,
@@ -313,7 +314,8 @@ authRouter.post('/verify-token', asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     user: {
-      id: user.id,
+      id: user.publicId,
+      public_id: user.publicId,
       email: user.email,
       first_name: user.firstName,
       last_name: user.lastName,
@@ -444,7 +446,8 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     user: {
-      id: user.id,
+      id: user.publicId,
+      public_id: user.publicId,
       email: user.email,
       first_name: user.firstName,
       last_name: user.lastName,
@@ -519,7 +522,17 @@ authRouter.post('/logout', asyncHandler(async (req, res) => {
 }));
 
 authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  return sendSuccess(res, { user: req.currentUser });
+  return sendSuccess(res, {
+    user: {
+      id: req.currentUser.public_id,
+      public_id: req.currentUser.public_id,
+      email: req.currentUser.email,
+      first_name: req.currentUser.first_name,
+      last_name: req.currentUser.last_name,
+      avatar_url: req.currentUser.avatar_url,
+      created_at: req.currentUser.created_at,
+    }
+  });
 }));
 
 authRouter.post('/forgot-password', asyncHandler(async (req, res) => {

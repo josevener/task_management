@@ -8,6 +8,7 @@ const { createSlug } = require('../utils/slug');
 const { sendMail } = require('../utils/mailer');
 const { createRoleWithPermissions } = require('../utils/rbac');
 const { runSerializableTransaction } = require('../utils/serializable-transaction');
+const { publicIdParam, resolveInternalId } = require('../utils/public-id');
 const {
   normalizeEmail,
   createInvitationToken,
@@ -18,6 +19,9 @@ const {
 
 const workspacesRouter = express.Router();
 workspacesRouter.use(attachCurrentUser, requireAuth);
+workspacesRouter.param('id', publicIdParam(prisma, 'Workspace'));
+workspacesRouter.param('workspaceId', publicIdParam(prisma, 'Workspace'));
+workspacesRouter.param('membershipId', publicIdParam(prisma, 'WorkspaceMember'));
 
 async function ensureDefaultMemberRole(workspaceId, selectedRole) {
   if (selectedRole) return selectedRole;
@@ -54,8 +58,10 @@ function mapWorkspace(w, currentUserId) {
   if (!w) return null;
   const userMember = w.members?.find(m => m.userId === currentUserId) || w.members?.[0] || {};
   return {
-    id: w.id,
-    organization_id: w.organizationId,
+    id: w.publicId,
+    public_id: w.publicId,
+    organization_id: w.organization?.publicId || undefined,
+    organization_public_id: w.organization?.publicId || undefined,
     name: w.name,
     slug: w.slug,
     description: w.description,
@@ -69,7 +75,7 @@ function mapWorkspace(w, currentUserId) {
     date_format: w.organization?.dateFormat || null,
     time_format: w.organization?.timeFormat || null,
     user_role: userMember.roleObj?.name || userMember.role || 'member',
-    user_role_id: userMember.roleId || null
+    user_role_id: userMember.roleObj?.publicId || null
   };
 }
 
@@ -119,15 +125,17 @@ workspacesRouter.get('/', asyncHandler(async (req, res) => {
     }
   };
 
-  if (req.query.organization_id) {
-    whereClause.organizationId = parseInt(req.query.organization_id, 10);
+  if (req.query.organization_public_id) {
+    const organizationId = await resolveInternalId(prisma, 'Organization', req.query.organization_public_id, 'organization_public_id');
+    if (!organizationId) return sendError(res, 'Organization not found or access denied', 404);
+    whereClause.organizationId = organizationId;
   }
 
   const workspaces = await prisma.workspace.findMany({
     where: whereClause,
     include: {
       organization: {
-        select: { name: true }
+        select: { name: true, publicId: true }
       },
       members: {
         where: { userId: req.currentUser.id },
@@ -211,7 +219,10 @@ workspacesRouter.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 workspacesRouter.post('/', asyncHandler(async (req, res) => {
-  const organization_id = req.body.organization_id;
+  const organization_public_id = req.body.organization_public_id;
+  const organization_id = organization_public_id
+    ? await resolveInternalId(prisma, 'Organization', organization_public_id, 'organization_public_id')
+    : null;
   const name = String(req.body.name || '').trim();
   const slug = createSlug(req.body.slug || name);
   const description = String(req.body.description || '').trim();
@@ -219,7 +230,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
   const errors = {};
 
   if (!organization_id) {
-    errors.organization_id = 'Organization ID is required';
+    errors.organization_public_id = 'Organization public ID is required';
   }
   if (!name) {
     errors.name = 'Workspace name is required';
@@ -232,7 +243,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
 
   const orgAccessCount = organization_id ? await prisma.organization.count({
     where: {
-      id: parseInt(organization_id, 10),
+      id: organization_id,
       isActive: true,
       workspaces: {
         some: {
@@ -247,7 +258,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
   }) : 0;
 
   if (organization_id && orgAccessCount === 0) {
-    errors.organization_id = 'Organization not found or access denied';
+    errors.organization_public_id = 'Organization not found or access denied';
   }
 
   if (Object.keys(errors).length > 0) {
@@ -261,7 +272,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
 
   const existing = await prisma.workspace.findFirst({
     where: {
-      organizationId: parseInt(organization_id, 10),
+      organizationId: organization_id,
       slug
     }
   });
@@ -273,7 +284,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
   const workspace = await prisma.$transaction(async (tx) => {
     const newWs = await tx.workspace.create({
       data: {
-        organizationId: parseInt(organization_id, 10),
+        organizationId: organization_id,
         name,
         slug,
         description: description || null,
@@ -313,13 +324,15 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
     const fullWs = await tx.workspace.findUnique({
       where: { id: newWs.id },
       include: {
-        organization: { select: { name: true } }
+        organization: { select: { name: true, publicId: true } }
       }
     });
 
     return {
-      id: fullWs.id,
-      organization_id: fullWs.organizationId,
+      id: fullWs.publicId,
+      public_id: fullWs.publicId,
+      organization_id: fullWs.organization.publicId,
+      organization_public_id: fullWs.organization.publicId,
       name: fullWs.name,
       slug: fullWs.slug,
       description: fullWs.description,

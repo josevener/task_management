@@ -18,7 +18,7 @@ interface WorkspaceContextType {
   userPermissions: string[];
   hasPermission: (action: string) => boolean;
   switchWorkspace: (workspace: Workspace) => void;
-  refreshWorkspaces: (targetWorkspaceId?: number) => Promise<Workspace | null>;
+  refreshWorkspaces: (targetWorkspaceId?: string) => Promise<Workspace | null>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -39,7 +39,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return userPermissions.includes(action);
   }, [userPermissions, activeWorkspace]);
 
-  const fetchWorkspaces = useCallback(async (targetWorkspaceId?: number) => {
+  const fetchWorkspaces = useCallback(async (targetWorkspaceId?: string) => {
     if (!authenticated) {
       setWorkspaces([]);
       setActiveWorkspace(null);
@@ -59,7 +59,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           const target = fetchedWorkspaces.find(w => w.id === targetWorkspaceId);
           if (target) {
             setActiveWorkspace(target);
-            localStorage.setItem('activeWorkspaceId', target.id.toString());
+            localStorage.setItem('activeWorkspaceId', target.id);
             return target;
           }
         }
@@ -76,7 +76,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         // 3. Find if we had one saved in localStorage that is valid
         const savedId = localStorage.getItem('activeWorkspaceId');
         if (savedId) {
-          const found = fetchedWorkspaces.find(w => w.id.toString() === savedId);
+          const found = fetchedWorkspaces.find(w => w.id === savedId);
           if (found) {
             setActiveWorkspace(found);
             return found;
@@ -86,7 +86,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         // 4. Default to first if none of the above
         const first = fetchedWorkspaces[0];
         setActiveWorkspace(first);
-        localStorage.setItem('activeWorkspaceId', first.id.toString());
+        localStorage.setItem('activeWorkspaceId', first.id);
         return first;
       }
       else {
@@ -154,7 +154,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const switchWorkspace = useCallback((workspace: Workspace) => {
     setActiveWorkspace(workspace);
-    localStorage.setItem('activeWorkspaceId', workspace.id.toString());
+    localStorage.setItem('activeWorkspaceId', workspace.id);
   }, []);
 
   const value: WorkspaceContextType = {

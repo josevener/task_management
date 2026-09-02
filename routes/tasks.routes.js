@@ -6,10 +6,12 @@ const { sendError, sendSuccess, sendValidationError } = require('../utils/respon
 const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { isValidDate } = require('../utils/validation');
 const sseManager = require('../utils/sse-manager');
+const { publicIdParam, resolveInternalId } = require('../utils/public-id');
 
 const tasksRouter = express.Router();
 
 tasksRouter.use(attachCurrentUser, requireAuth);
+tasksRouter.param('id', publicIdParam(prisma, 'Task'));
 
 async function getTaskTags(taskId) {
   const normalizedTaskId = Number(taskId);
@@ -22,7 +24,8 @@ async function getTaskTags(taskId) {
     include: { tag: true }
   });
   return assignments.map((a) => ({
-    id: a.tag.id,
+    id: a.tag.publicId,
+    public_id: a.tag.publicId,
     name: a.tag.name,
     color: a.tag.color
   }));
@@ -86,19 +89,22 @@ async function validateParentTask(tx, existingTask, parentTaskId) {
 function mapTask(t) {
   if (!t) return null;
   return {
-    id: t.id,
-    project_id: t.projectId,
-    parent_task_id: t.parentTaskId,
+    id: t.publicId,
+    public_id: t.publicId,
+    project_id: t.project?.publicId || undefined,
+    project_public_id: t.project?.publicId || undefined,
+    parent_task_id: undefined,
     title: t.title,
     description: t.description,
     status: t.status,
     priority: t.priority,
-    assignee_id: t.assigneeId,
-    assigned_by: t.assignedBy,
+    assignee_id: t.assignee?.publicId || undefined,
+    assignee_public_id: t.assignee?.publicId || undefined,
+    assigned_by: t.assignedByUser?.publicId || undefined,
     start_date: t.startDate,
     due_date: t.dueDate,
     position: t.position,
-    created_by: t.createdBy,
+    created_by: t.creator?.publicId || undefined,
     created_at: t.createdAt,
     updated_at: t.updatedAt,
     assignee_first_name: t.assignee?.firstName || null,
@@ -117,10 +123,12 @@ function mapTask(t) {
 tasksRouter.get('/', asyncHandler(async (req, res) => {
   const where = {};
 
-  if (req.query.project_id) {
+  if (req.query.project_public_id) {
+    const projectId = await resolveInternalId(prisma, 'Project', req.query.project_public_id, 'project_public_id');
+    if (!projectId) return sendError(res, 'Project access denied', 403);
     const project = await prisma.project.findFirst({
       where: {
-        id: parseInt(req.query.project_id, 10),
+        id: projectId,
         workspace: {
           members: {
             some: {
@@ -136,11 +144,13 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
       return sendError(res, 'Project access denied', 403);
     }
 
-    where.projectId = parseInt(req.query.project_id, 10);
-  } else if (req.query.workspace_id) {
+    where.projectId = projectId;
+  } else if (req.query.workspace_public_id) {
+    const workspaceId = await resolveInternalId(prisma, 'Workspace', req.query.workspace_public_id, 'workspace_public_id');
+    if (!workspaceId) return sendError(res, 'Workspace access denied', 403);
     const workspaceMember = await prisma.workspaceMember.findFirst({
       where: {
-        workspaceId: parseInt(req.query.workspace_id, 10),
+        workspaceId,
         userId: req.currentUser.id
       },
       select: { role: true }
@@ -151,7 +161,7 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
     }
 
     where.project = {
-      workspaceId: parseInt(req.query.workspace_id, 10)
+      workspaceId
     };
   } else {
     where.project = {
@@ -177,8 +187,10 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
     where.status = req.query.status;
   }
 
-  if (req.query.assignee_id) {
-    where.assigneeId = parseInt(req.query.assignee_id, 10);
+  if (req.query.assignee_public_id) {
+    const assigneeId = await resolveInternalId(prisma, 'User', req.query.assignee_public_id, 'assignee_public_id');
+    if (!assigneeId) return sendSuccess(res, { tasks: [] });
+    where.assigneeId = assigneeId;
   }
 
   const tasksDb = await prisma.task.findMany({
@@ -187,11 +199,7 @@ tasksRouter.get('/', asyncHandler(async (req, res) => {
       assignee: true,
       creator: true,
       assignedByUser: true,
-      project: {
-        select: {
-          name: true
-        }
-      }
+      project: { select: { name: true, publicId: true } }
     },
     orderBy: [
       { position: 'asc' },
@@ -229,7 +237,8 @@ tasksRouter.get('/:id', asyncHandler(async (req, res) => {
       assignedByUser: true,
       project: {
         select: {
-          name: true
+          name: true,
+          publicId: true
         }
       }
     }
@@ -246,20 +255,28 @@ tasksRouter.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 tasksRouter.post('/', asyncHandler(async (req, res) => {
-  const project_id = req.body.project_id;
-  const parent_task_id = req.body.parent_task_id || null;
+  const project_public_id = req.body.project_public_id;
+  const project_id = project_public_id
+    ? await resolveInternalId(prisma, 'Project', project_public_id, 'project_public_id')
+    : null;
+  const parent_task_id = req.body.parent_task_public_id
+    ? await resolveInternalId(prisma, 'Task', req.body.parent_task_public_id, 'parent_task_public_id')
+    : null;
   const title = String(req.body.title || '').trim();
   const description = String(req.body.description || '').trim();
   const status = req.body.status || 'todo';
   const priority = req.body.priority || 'medium';
-  const assignee_id = req.body.assignee_id || null;
+  const assignee_id = req.body.assignee_public_id || req.body.assignee_id || null;
+  const assignee_internal_id = assignee_id
+    ? await resolveInternalId(prisma, 'User', assignee_id, 'assignee_public_id')
+    : null;
   const start_date = req.body.start_date || null;
   const due_date = req.body.due_date || null;
   const tags = Array.isArray(req.body.tags) ? req.body.tags : [];
   const errors = {};
 
   if (!project_id) {
-    errors.project_id = 'Project ID is required';
+    errors.project_public_id = 'Project public ID is required';
   }
   if (!title) {
     errors.title = 'Task title is required';
@@ -281,7 +298,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
 
   const project = project_id ? await prisma.project.findFirst({
     where: {
-      id: parseInt(project_id, 10),
+      id: project_id,
       workspace: {
         members: {
           some: {
@@ -299,11 +316,11 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
 
   if (project_id) {
     if (!project) {
-      errors.project_id = 'Project access denied';
+      errors.project_public_id = 'Project access denied';
     } else {
       const canCreate = await checkPermission(project.workspaceId, req.currentUser.id, 'tasks:create');
       if (!canCreate) {
-        errors.project_id = 'You do not have permission to create tasks in this workspace';
+        errors.project_public_id = 'You do not have permission to create tasks in this workspace';
       }
     }
   }
@@ -311,8 +328,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   if (parent_task_id) {
     const parentTask = await prisma.task.findFirst({
       where: {
-        id: parseInt(parent_task_id, 10),
-        projectId: parseInt(project_id, 10)
+        id: parent_task_id,
+        projectId: project_id
       },
       select: { id: true }
     });
@@ -323,7 +340,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   }
 
   if (assignee_id && project) {
-    const assigneeIsMember = await isWorkspaceMember(project.workspaceId, assignee_id);
+    const assigneeIsMember = assignee_internal_id && await isWorkspaceMember(project.workspaceId, assignee_internal_id);
     if (!assigneeIsMember) {
       errors.assignee_id = 'Assignee must be a member of this workspace';
     }
@@ -336,8 +353,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   const task = await prisma.$transaction(async (tx) => {
     const aggregate = await tx.task.aggregate({
       where: {
-        projectId: parseInt(project_id, 10),
-        parentTaskId: parent_task_id ? parseInt(parent_task_id, 10) : null
+        projectId: project_id,
+        parentTaskId: parent_task_id
       },
       _max: {
         position: true
@@ -348,13 +365,13 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
 
     const newTask = await tx.task.create({
       data: {
-        projectId: parseInt(project_id, 10),
-        parentTaskId: parent_task_id ? parseInt(parent_task_id, 10) : null,
+        projectId: project_id,
+        parentTaskId: parent_task_id,
         title,
         description: description || null,
         status,
         priority,
-        assigneeId: assignee_id ? parseInt(assignee_id, 10) : null,
+        assigneeId: assignee_internal_id,
         assignedBy: assignee_id ? req.currentUser.id : null,
         startDate: start_date ? new Date(start_date) : null,
         dueDate: due_date ? new Date(due_date) : null,
@@ -393,7 +410,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
       data: {
         userId: req.currentUser.id,
         workspaceId: project.workspaceId,
-        projectId: parseInt(project_id, 10),
+        projectId: project_id,
         taskId: newTask.id,
         activityType: 'task_created',
         description: `Task '${title}' was created`
@@ -408,7 +425,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
           title: `New task assigned: ${title}`,
           message: 'You have been assigned to a new task',
           relatedWorkspaceId: project.workspaceId,
-          relatedProjectId: parseInt(project_id, 10),
+          relatedProjectId: project_id,
           relatedTaskId: newTask.id
         }
       });
@@ -435,7 +452,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
         task_title: title
       };
 
-      sseManager.broadcastToUser(parseInt(assignee_id, 10), 'new_notification', broadcastPayload);
+      sseManager.broadcastToUser(assignee_internal_id, 'new_notification', broadcastPayload);
     }
 
     const taskWithRelations = await tx.task.findUnique({
@@ -443,7 +460,8 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
       include: {
         assignee: true,
         creator: true,
-        assignedByUser: true
+        assignedByUser: true,
+        project: { select: { name: true, publicId: true } }
       }
     });
 
@@ -472,7 +490,8 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
       project: {
         select: {
           workspaceId: true,
-          name: true
+          name: true,
+          publicId: true
         }
       }
     }
@@ -719,7 +738,8 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
       assignedByUser: true,
       project: {
         select: {
-          name: true
+          name: true,
+          publicId: true
         }
       }
     }
