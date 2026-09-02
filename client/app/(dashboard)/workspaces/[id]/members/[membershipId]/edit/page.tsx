@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface WorkspaceRole {
-  id: number;
+  id: string;
   name: string;
   description?: string | null;
   is_system_role?: boolean;
@@ -74,11 +74,11 @@ export default function EditWorkspaceMemberPage() {
     setRoleError("");
     try {
       setIsSaving(true);
-      await updateWorkspaceMember(memberPublicId, { role_id: Number(selectedRoleId) });
+      await updateWorkspaceMember(memberPublicId, { role_public_id: selectedRoleId });
       showToast("Member role updated", "success");
       router.push(`/workspaces/${workspaceId}/members/${memberPublicId}`);
     } catch (error) {
-      setRoleError(error instanceof ApiClientError && error.errors?.role_id ? error.errors.role_id : error instanceof Error ? error.message : "Could not update this member's role.");
+      setRoleError(error instanceof ApiClientError && error.errors?.role_public_id ? error.errors.role_public_id : error instanceof Error ? error.message : "Could not update this member's role.");
     } finally { setIsSaving(false); }
   };
 

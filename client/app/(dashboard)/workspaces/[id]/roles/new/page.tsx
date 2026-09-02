@@ -13,7 +13,7 @@ import { RoleForm } from "@/components/forms/RoleForm";
 export default function CreateRolePage() {
   const params = useParams();
   const router = useRouter();
-  const workspaceId = parseInt(params.id as string);
+  const workspaceId = params.id as string;
 
   const { activeWorkspace } = useWorkspace();
   const { showToast } = useToast();
@@ -23,13 +23,13 @@ export default function CreateRolePage() {
   const handleSubmit = async (data: { name: string; description: string }) => {
     setSubmitting(true);
     try {
-      await createRole(workspaceId, {
+      const response = await createRole(workspaceId, {
         name: data.name,
         description: data.description
       });
 
-      showToast("Role created successfully", "success");
-      router.push(`/workspaces/${workspaceId}/roles`);
+      showToast("Role created. Choose its permissions next.", "success");
+      router.push(`/workspaces/${workspaceId}/roles/${response.role.id}/permissions`);
     }
     catch (error: unknown) {
       const apiError = error as { message?: string; errors?: { name?: string } };

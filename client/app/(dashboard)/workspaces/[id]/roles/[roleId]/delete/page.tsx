@@ -11,8 +11,8 @@ import { useToast } from "@/lib/toast";
 export default function DeleteRolePage() {
   const params = useParams();
   const router = useRouter();
-  const workspaceId = parseInt(params.id as string);
-  const roleId = parseInt(params.roleId as string);
+  const workspaceId = params.id as string;
+  const roleId = params.roleId as string;
 
   const { showToast } = useToast();
 
@@ -20,7 +20,7 @@ export default function DeleteRolePage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [fallbackRoleId, setFallbackRoleId] = useState<number | "">("");
+  const [fallbackRoleId, setFallbackRoleId] = useState<string>("");
 
   useEffect(() => {
     if (workspaceId && roleId) {
@@ -59,7 +59,7 @@ export default function DeleteRolePage() {
 
     setSubmitting(true);
     try {
-      await deleteRole(workspaceId, role.id, fallbackRoleId ? Number(fallbackRoleId) : undefined);
+      await deleteRole(workspaceId, role.id, fallbackRoleId || undefined);
       showToast("Role deleted successfully", "success");
       router.push(`/workspaces/${workspaceId}/roles`);
     } catch (error: unknown) {
@@ -120,7 +120,7 @@ export default function DeleteRolePage() {
                     id="fallback"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     value={fallbackRoleId}
-                    onChange={(e) => setFallbackRoleId(Number(e.target.value))}
+                    onChange={(e) => setFallbackRoleId(e.target.value)}
                     required
                   >
                     <option value="" disabled>Select a fallback role...</option>

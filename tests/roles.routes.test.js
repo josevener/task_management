@@ -63,9 +63,12 @@ test('role deletion rejects a fallback role from another workspace', async () =>
         }
       },
       role: {
+        async findUnique(args) {
+          return args.where.publicId.startsWith('rol_b') ? { id: 99 } : { id: 2 };
+        },
         async findFirst(args) {
           if (args.where.id === 2) {
-            return { id: 2, workspaceId: 4, isSystemRole: false };
+            return { id: 2, publicId: 'rol_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', workspaceId: 4, isSystemRole: false, _count: { members: 0 } };
           }
           return null;
         }
@@ -79,13 +82,13 @@ test('role deletion rejects a fallback role from another workspace', async () =>
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles/2', {
+    const response = await requestJson('/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles/rol_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'DELETE',
-      body: { fallback_role_id: 99 },
+      body: { fallback_role_public_id: 'rol_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
     });
 
     assert.equal(response.status, 422);
-    assert.equal(response.body.errors.fallback_role_id, 'Fallback role does not belong to this workspace');
+    assert.equal(response.body.errors.fallback_role_public_id, 'Fallback role must be a different role in this workspace');
   });
 
   routerHarness.restore();

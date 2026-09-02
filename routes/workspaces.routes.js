@@ -9,6 +9,7 @@ const { sendMail } = require('../utils/mailer');
 const { createRoleWithPermissions } = require('../utils/rbac');
 const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { publicIdParam, resolveInternalId } = require('../utils/public-id');
+const { getActorRolePolicy, canGrantPermissionActions } = require('../utils/role-policy');
 const {
   normalizeEmail,
   createInvitationToken,
@@ -690,7 +691,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 }));
 
 workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => {
-  const { role_id, first_name, last_name, email } = req.body;
+  const { role_public_id, first_name, last_name, email } = req.body;
 
   const targetMember = await prisma.workspaceMember.findUnique({
     where: { id: parseInt(req.params.membershipId, 10) },
@@ -708,27 +709,34 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
 
   const errors = {};
 
-  if (role_id) {
+  if (role_public_id) {
+    const roleId = await resolveInternalId(prisma, 'Role', role_public_id, 'role_public_id');
     const newRole = await prisma.role.findFirst({
       where: {
-        id: parseInt(role_id, 10),
+        id: roleId || -1,
         workspaceId: targetMember.workspaceId
-      }
+      },
+      include: { rolePermissions: { include: { permission: { select: { action: true } } } } }
     });
 
     if (!newRole) {
-      errors.role_id = 'The selected role does not belong to this workspace';
-    } else if (targetMember.roleObj?.name === 'Admin' && newRole.name !== 'Admin') {
-      const otherAdminsCount = await prisma.workspaceMember.count({
-        where: {
-          workspaceId: targetMember.workspaceId,
-          roleObj: { name: 'Admin' },
-          userId: { not: targetMember.userId }
-        }
-      });
+      errors.role_public_id = 'The selected role does not belong to this workspace';
+    } else {
+      const actorPolicy = await getActorRolePolicy(prisma, targetMember.workspaceId, req.currentUser.id);
+      if (!canGrantPermissionActions(actorPolicy, newRole.rolePermissions.map(({ permission }) => permission.action))) {
+        errors.role_public_id = 'You cannot assign a role with permissions you do not hold';
+      } else if (targetMember.roleObj?.name === 'Admin' && newRole.name !== 'Admin') {
+        const otherAdminsCount = await prisma.workspaceMember.count({
+          where: {
+            workspaceId: targetMember.workspaceId,
+            roleObj: { name: 'Admin' },
+            userId: { not: targetMember.userId }
+          }
+        });
 
-      if (otherAdminsCount === 0) {
-        errors.role_id = 'Cannot demote the last administrator. Promote someone else first.';
+        if (otherAdminsCount === 0) {
+          errors.role_public_id = 'Cannot demote the last administrator. Promote someone else first.';
+        }
       }
     }
   }
@@ -741,10 +749,11 @@ workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => 
     return sendValidationError(res, errors);
   }
 
-  if (role_id) {
+  if (role_public_id) {
+    const roleId = await resolveInternalId(prisma, 'Role', role_public_id, 'role_public_id');
     await prisma.workspaceMember.update({
       where: { id: parseInt(req.params.membershipId, 10) },
-      data: { roleId: parseInt(role_id, 10) }
+      data: { roleId }
     });
   }
 

@@ -15,14 +15,15 @@ export default function RolePermissionsPage() {
 
   const params = useParams();
   const router = useRouter();
-  const workspaceId = parseInt(params.id as string);
-  const roleId = parseInt(params.roleId as string);
+  const workspaceId = params.id as string;
+  const roleId = params.roleId as string;
 
   const { loading: workspaceLoading } = useWorkspace();
 
   const [role, setRole] = useState<Role | null>(null);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
-  const [assignedPermissionIds, setAssignedPermissionIds] = useState<Set<number>>(new Set());
+  const [assignedPermissionIds, setAssignedPermissionIds] = useState<Set<string>>(new Set());
+  const [initialPermissionIds, setInitialPermissionIds] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,6 +55,7 @@ export default function RolePermissionsPage() {
       const rolePermsRes = await getRolePermissions(workspaceId, roleId);
       const idSet = new Set(rolePermsRes.permissions.map(p => p.id));
       setAssignedPermissionIds(idSet);
+      setInitialPermissionIds(new Set(idSet));
 
     }
     catch (error: unknown) {
@@ -68,7 +70,7 @@ export default function RolePermissionsPage() {
     }
   };
 
-  const handleTogglePermission = (permissionId: number) => {
+  const handleTogglePermission = (permissionId: string) => {
     if (role?.name === 'Admin') return; // Admin permissions can't be toggled usually, enforcing here too
 
     const newSet = new Set(assignedPermissionIds);
@@ -129,6 +131,18 @@ export default function RolePermissionsPage() {
     return acc;
   }, {} as Record<string, Permission[]>);
 
+  const selectedPermissionCount = assignedPermissionIds.size;
+  const isSystemRole = role?.is_system_role ?? false;
+  const sensitivePermissionChanged = allPermissions.some((permission) => {
+    const isSensitive = permission.action.startsWith("roles:") || ["members:manage_roles", "members:remove", "workspaces:delete", "organizations:edit"].includes(permission.action);
+    return isSensitive && assignedPermissionIds.has(permission.id) !== initialPermissionIds.has(permission.id);
+  });
+
+  const formatPermissionAction = (action: string) => {
+    const [, actionName = action] = action.split(":");
+    return actionName.replaceAll("_", " ");
+  };
+
   if (workspaceLoading || loading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
@@ -138,9 +152,9 @@ export default function RolePermissionsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+    <div className="flex h-full flex-col gap-6 overflow-hidden bg-slate-50">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-1 pb-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
           <Link href={`/workspaces/${workspaceId}/roles`}>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full cursor-pointer">
@@ -148,7 +162,8 @@ export default function RolePermissionsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">Roles / Permissions</p>
+            <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
               {role?.name === 'Admin' ? <ShieldAlert className="h-5 w-5 text-amber-500" /> : <ShieldCheck className="h-5 w-5 text-blue-500" />}
               {role?.name} Permissions
             </h1>
@@ -157,58 +172,86 @@ export default function RolePermissionsPage() {
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleSave}
-          disabled={saving || role?.name === 'Admin'}
-          className="bg-blue-600 hover:bg-blue-700 text-white min-w-[100px] cursor-pointer"
-        >
-          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-          Save Matrix
-        </Button>
-      </div>
+        <div className="flex items-center gap-3">
+          <div className="hidden rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right sm:block">
+            <p className="text-xs text-slate-500">Enabled permissions</p>
+            <p className="text-sm font-semibold text-slate-900">{selectedPermissionCount} of {allPermissions.length}</p>
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={saving || role?.name === 'Admin'}
+            className="min-w-[132px] cursor-pointer bg-blue-600 text-white hover:bg-blue-700"
+          >
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      </header>
 
       {/* Content Matrix */}
-      <main className="flex-1 overflow-y-auto w-full py-6">
-        <div className="w-full space-y-6">
+      <main className="w-full flex-1 overflow-y-auto pb-6">
+        <div className="w-full space-y-5">
+          <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Permission matrix</p>
+              <p className="mt-1 text-sm text-slate-500">Select the actions this role can perform in each area of the workspace.</p>
+            </div>
+            <div className="flex items-center sm:justify-end">
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isSystemRole ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}>
+                {isSystemRole ? "System role" : "Custom role"}
+              </span>
+            </div>
+          </section>
+
           {role?.name === 'Admin' && (
-            <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start gap-3">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
               <ShieldAlert className="h-5 w-5 mt-0.5 shrink-0" />
               <div>
-                <h3 className="font-semibold text-sm">Admin Role is Immutable</h3>
+                <h3 className="text-sm font-semibold">Admin permissions are protected</h3>
                 <p className="text-sm mt-1 opacity-90">
-                  The primary Admin role permissions cannot be completely removed to prevent lockout.
-                  It is recommended to create a new custom role instead of modifying core system roles.
+                  This role keeps its full access to prevent an administrator lockout. Create a custom role when you need a tailored permission set.
                 </p>
               </div>
             </div>
           )}
 
-          <div className="grid gap-2 w-full max-h-[calc(100vh-200px)] overflow-y-auto">
+          {sensitivePermissionChanged && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">This change affects sensitive access</p>
+              <p className="mt-1 leading-6">Review role management, member administration, workspace deletion, and organization settings permissions before saving.</p>
+            </div>
+          )}
+
+          <div className="grid w-full gap-3">
             {Object.entries(groupedPermissions).map(([moduleName, modulePerms]) => {
               // Determine if all perms in this module are checked
               const allChecked = modulePerms.every(p => assignedPermissionIds.has(p.id));
               const someChecked = modulePerms.some(p => assignedPermissionIds.has(p.id)) && !allChecked;
+              const selectedInModule = modulePerms.filter(p => assignedPermissionIds.has(p.id)).length;
 
               return (
                 <div key={moduleName} className="bg-white border border-slate-200 rounded-xl shadow-sm">
                   {/* Module Header */}
-                  <div className="bg-slate-50 px-6 py-4 flex items-center gap-3 border-b border-slate-200">
+                  <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
                     <Checkbox
                       id={`module-${moduleName}`}
                       checked={allChecked ? true : (someChecked ? "indeterminate" : false)}
                       onCheckedChange={(checked) => handleToggleModule(moduleName, checked === true)}
                       disabled={role?.name === 'Admin'}
                     />
-                    <label
-                      htmlFor={`module-${moduleName}`}
-                      className="font-bold text-slate-800 capitalize cursor-pointer mb-0 select-none"
-                    >
-                      {moduleName} Module
-                    </label>
+                    <div className="min-w-0 flex-1">
+                      <label
+                        htmlFor={`module-${moduleName}`}
+                        className="mb-0 cursor-pointer select-none font-bold capitalize text-slate-800"
+                      >
+                        {moduleName} module
+                      </label>
+                      <p className="mt-0.5 text-xs text-slate-500">{selectedInModule} of {modulePerms.length} permissions enabled</p>
+                    </div>
                   </div>
 
                   {/* Module Permissions Grid */}
-                  <div className="px-6 py-4 grid sm:grid-cols-2 gap-4">
+                  <div className="grid gap-x-8 gap-y-5 px-5 py-5 sm:grid-cols-2">
                     {modulePerms.map((perm) => (
                       <div key={perm.id} className="flex items-start gap-3">
                         <Checkbox
@@ -221,9 +264,9 @@ export default function RolePermissionsPage() {
                         <div className="grid gap-1">
                           <label
                             htmlFor={`perm-${perm.id}`}
-                            className="text-sm font-medium text-slate-700 cursor-pointer select-none"
+                            className="cursor-pointer select-none text-sm font-medium capitalize text-slate-700"
                           >
-                            {perm.action.split(':')[1].replace('_', ' ')}
+                            {formatPermissionAction(perm.action)}
                           </label>
                           <p className="text-xs text-slate-500">
                             {perm.description}

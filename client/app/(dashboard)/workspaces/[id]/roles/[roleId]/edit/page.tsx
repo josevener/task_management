@@ -12,8 +12,8 @@ import { RoleForm } from "@/components/forms/RoleForm";
 export default function EditRolePage() {
   const params = useParams();
   const router = useRouter();
-  const workspaceId = parseInt(params.id as string);
-  const roleId = parseInt(params.roleId as string);
+  const workspaceId = params.id as string;
+  const roleId = params.roleId as string;
 
   const { showToast } = useToast();
 

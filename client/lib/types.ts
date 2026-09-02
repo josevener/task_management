@@ -167,15 +167,18 @@ export interface TaskResponse {
 
 // Role and Permission types
 export interface Permission {
-  id: number;
+  id: string;
+  public_id: string;
   module: string;
   action: string;
   description: string;
 }
 
 export interface Role {
-  id: number;
-  workspace_id: number;
+  id: string;
+  public_id: string;
+  workspace_id?: string;
+  workspace_public_id?: string;
   name: string;
   description: string | null;
   is_system_role: boolean;

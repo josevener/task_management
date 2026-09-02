@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
-import { useAuth } from "@/contexts/auth-context";
-import { getRoles, createRole, updateRole, deleteRole, type Role } from "@/lib/api/roles";
+import { duplicateRole, getRoles, type Role } from "@/lib/api/roles";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,24 +17,29 @@ import {
   MoreVertical,
   Shield,
   Plus,
-  ArrowLeft,
   Users,
   Settings2,
   Edit2,
-  Trash2
+  Trash2,
+  Copy
 } from "lucide-react";
 import { useToast } from "@/lib/toast";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function RolesPage() {
   const { showToast } = useToast();
   const params = useParams();
   const router = useRouter();
-  const workspaceId = parseInt(params.id as string);
+  const workspaceId = params.id as string;
 
   const { activeWorkspace, loading: workspaceLoading, hasPermission } = useWorkspace();
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  const [roleToDuplicate, setRoleToDuplicate] = useState<Role | null>(null);
+  const [duplicateName, setDuplicateName] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
 
   useEffect(() => {
     if (workspaceId) {
@@ -58,6 +62,23 @@ export default function RolesPage() {
     }
     finally {
       setLoading(false);
+    }
+  };
+
+  const duplicateSelectedRole = async () => {
+    if (!roleToDuplicate || !duplicateName.trim()) return;
+    setDuplicating(true);
+    try {
+      await duplicateRole(workspaceId, roleToDuplicate.id, { name: duplicateName.trim(), description: roleToDuplicate.description || undefined });
+      showToast("Role duplicated successfully", "success");
+      setRoleToDuplicate(null);
+      setDuplicateName("");
+      await loadRoles();
+    } catch (error: unknown) {
+      const apiError = error as { message?: string; errors?: { name?: string } };
+      showToast(apiError.errors?.name || apiError.message || "Failed to duplicate role", "error");
+    } finally {
+      setDuplicating(false);
     }
   };
 
@@ -158,6 +179,19 @@ export default function RolesPage() {
                                 </Link>
                               </>
                             )}
+                            {!role.is_system_role && hasPermission('roles:create') && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onSelect={(event) => {
+                                  event.preventDefault();
+                                  setRoleToDuplicate(role);
+                                  setDuplicateName(`${role.name} copy`);
+                                }}
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                Duplicate role
+                              </DropdownMenuItem>
+                            )}
                             {!role.is_system_role && hasPermission('roles:delete') && (
                               <>
                                 {hasPermission('roles:edit') && <DropdownMenuSeparator />}
@@ -187,6 +221,22 @@ export default function RolesPage() {
           </div>
         </div>
       </main>
+      <Dialog open={Boolean(roleToDuplicate)} onOpenChange={(open) => { if (!open && !duplicating) setRoleToDuplicate(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate role</DialogTitle>
+            <DialogDescription>Create a new role with the same permissions. Members will not be copied.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="duplicate-role-name" className="text-sm font-medium text-slate-700">New role name</label>
+            <Input id="duplicate-role-name" value={duplicateName} onChange={(event) => setDuplicateName(event.target.value)} disabled={duplicating} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleToDuplicate(null)} disabled={duplicating}>Cancel</Button>
+            <Button onClick={() => void duplicateSelectedRole()} disabled={!duplicateName.trim() || duplicating} className="bg-blue-600 hover:bg-blue-700">{duplicating ? "Duplicating..." : "Duplicate role"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

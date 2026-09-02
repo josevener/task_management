@@ -50,7 +50,7 @@ export async function addWorkspaceMember(
   return apiPost<WorkspaceInvitationResponse>(`/workspaces/${workspacePublicId}/members`, { email });
 }
 
-export async function updateWorkspaceMember(membershipId: string, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
+export async function updateWorkspaceMember(membershipId: string, data: { role_public_id?: string; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
   return apiPut<{ message: string }>(`/workspaces/members/${membershipId}`, data);
 }
 
