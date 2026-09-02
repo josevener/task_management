@@ -438,7 +438,8 @@ projectsRouter.get('/:projectId/members', asyncHandler(async (req, res) => {
   });
 
   const members = workspaceMembers.map((wm) => ({
-    id: wm.user.id,
+    id: wm.user.publicId,
+    public_id: wm.user.publicId,
     first_name: wm.user.firstName,
     last_name: wm.user.lastName,
     email: wm.user.email,

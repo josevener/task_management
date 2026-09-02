@@ -26,8 +26,8 @@ export interface TaskFormData {
   status: string;
   priority: string;
   due_date: string;
-  assignee_id: string | number;
-  project_id?: string | number;
+  assignee_id: string;
+  project_id?: string;
 }
 
 interface TaskFormProps {
@@ -37,11 +37,11 @@ interface TaskFormProps {
     status: string;
     priority: string;
     due_date: string;
-    assignee_id: string | number;
-    project_id?: string | number;
+    assignee_id: string;
+    project_id?: string;
   };
-  projects?: { id: number | string; name: string }[];
-  members: { id: number | string; first_name: string; last_name: string }[];
+  projects?: { id: string; name: string }[];
+  members: { id: string; first_name: string; last_name: string }[];
   onSubmit: (data: TaskFormData) => Promise<void>;
   onCancel: () => void;
   onProjectChange?: (projectId: string) => void;

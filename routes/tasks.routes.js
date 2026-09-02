@@ -266,9 +266,9 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
   const description = String(req.body.description || '').trim();
   const status = req.body.status || 'todo';
   const priority = req.body.priority || 'medium';
-  const assignee_id = req.body.assignee_public_id || req.body.assignee_id || null;
-  const assignee_internal_id = assignee_id
-    ? await resolveInternalId(prisma, 'User', assignee_id, 'assignee_public_id')
+  const assignee_public_id = req.body.assignee_public_id || null;
+  const assignee_internal_id = assignee_public_id
+    ? await resolveInternalId(prisma, 'User', assignee_public_id, 'assignee_public_id')
     : null;
   const start_date = req.body.start_date || null;
   const due_date = req.body.due_date || null;
@@ -339,10 +339,10 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     }
   }
 
-  if (assignee_id && project) {
+  if (assignee_public_id && project) {
     const assigneeIsMember = assignee_internal_id && await isWorkspaceMember(project.workspaceId, assignee_internal_id);
     if (!assigneeIsMember) {
-      errors.assignee_id = 'Assignee must be a member of this workspace';
+      errors.assignee_public_id = 'Assignee must be a member of this workspace';
     }
   }
 
@@ -350,7 +350,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const task = await prisma.$transaction(async (tx) => {
+  const createdTask = await prisma.$transaction(async (tx) => {
     const aggregate = await tx.task.aggregate({
       where: {
         projectId: project_id,
@@ -372,7 +372,7 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
         status,
         priority,
         assigneeId: assignee_internal_id,
-        assignedBy: assignee_id ? req.currentUser.id : null,
+        assignedBy: assignee_internal_id ? req.currentUser.id : null,
         startDate: start_date ? new Date(start_date) : null,
         dueDate: due_date ? new Date(due_date) : null,
         position,
@@ -417,10 +417,10 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
       }
     });
 
-    if (assignee_id && Number(assignee_id) !== Number(req.currentUser.id)) {
+    if (assignee_internal_id && assignee_internal_id !== req.currentUser.id) {
       const newNotif = await tx.notification.create({
         data: {
-          userId: parseInt(assignee_id, 10),
+          userId: assignee_internal_id,
           type: 'task_assigned',
           title: `New task assigned: ${title}`,
           message: 'You have been assigned to a new task',
@@ -465,11 +465,14 @@ tasksRouter.post('/', asyncHandler(async (req, res) => {
       }
     });
 
-    return mapTask(taskWithRelations);
+    return {
+      internalId: newTask.id,
+      task: mapTask(taskWithRelations)
+    };
   });
 
-  task.tags = await getTaskTags(task.id);
-  return sendSuccess(res, { task }, 201);
+  createdTask.task.tags = await getTaskTags(createdTask.internalId);
+  return sendSuccess(res, { task: createdTask.task }, 201);
 }));
 
 tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
@@ -529,10 +532,15 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'due_date') && !isValidDate(req.body.due_date)) {
     return sendValidationError(res, { due_date: 'Invalid due date format' });
   }
-  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && req.body.assignee_id) {
-    const assigneeIsMember = await isWorkspaceMember(workspaceId, req.body.assignee_id);
+  const assigneeRequested = Object.prototype.hasOwnProperty.call(req.body, 'assignee_public_id');
+  const assigneeInternalId = assigneeRequested && req.body.assignee_public_id
+    ? await resolveInternalId(prisma, 'User', req.body.assignee_public_id, 'assignee_public_id')
+    : null;
+
+  if (assigneeRequested && req.body.assignee_public_id) {
+    const assigneeIsMember = assigneeInternalId && await isWorkspaceMember(workspaceId, assigneeInternalId);
     if (!assigneeIsMember) {
-      return sendValidationError(res, { assignee_id: 'Assignee must be a member of this workspace' });
+      return sendValidationError(res, { assignee_public_id: 'Assignee must be a member of this workspace' });
     }
   }
   let requestedParentTaskId = null;
@@ -554,9 +562,9 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'parent_task_id')) updateData.parentTaskId = req.body.parent_task_id ? requestedParentTaskId : null;
   if (Object.prototype.hasOwnProperty.call(req.body, 'position')) updateData.position = parseInt(req.body.position, 10);
 
-  if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id')) {
-    updateData.assigneeId = req.body.assignee_id ? parseInt(req.body.assignee_id, 10) : null;
-    updateData.assignedBy = req.body.assignee_id ? req.currentUser.id : null;
+  if (assigneeRequested) {
+    updateData.assigneeId = assigneeInternalId;
+    updateData.assignedBy = assigneeInternalId ? req.currentUser.id : null;
   }
 
   const shouldUpdateTags = Array.isArray(req.body.tags);
@@ -609,7 +617,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, 'status') && req.body.status !== existingTask.status) {
       changes.push(`status changed from '${existingTask.status}' to '${req.body.status}'`);
     }
-    if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') && Number(req.body.assignee_id || 0) !== Number(existingTask.assigneeId || 0)) {
+    if (assigneeRequested && assigneeInternalId !== existingTask.assigneeId) {
       changes.push('assignee changed');
     }
 
@@ -626,14 +634,14 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
       });
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_id') &&
-      Number(req.body.assignee_id || 0) !== Number(existingTask.assigneeId || 0) &&
-      Number(req.body.assignee_id || 0) !== Number(req.currentUser.id)) {
+    if (assigneeRequested && assigneeInternalId &&
+      assigneeInternalId !== existingTask.assigneeId &&
+      assigneeInternalId !== req.currentUser.id) {
       const updatedTaskTitle = updateData.title || existingTask.title;
 
       const newNotif = await tx.notification.create({
         data: {
-          userId: parseInt(req.body.assignee_id, 10),
+          userId: assigneeInternalId,
           type: 'task_assigned',
           title: `Task assigned: ${updatedTaskTitle}`,
           message: `You have been assigned to a task in ${existingTask.project.name}`,
@@ -665,7 +673,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
         task_title: updatedTaskTitle
       };
 
-      broadcasts.push({ userId: parseInt(req.body.assignee_id, 10), payload: broadcastPayload });
+      broadcasts.push({ userId: assigneeInternalId, payload: broadcastPayload });
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'status') &&

@@ -11,7 +11,8 @@ export interface WorkspaceMember {
 }
 
 export interface ProjectMember {
-  id: number;
+  id: string;
+  public_id: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -58,6 +59,6 @@ export async function removeWorkspaceMember(membershipId: string): Promise<{ mes
   return apiDelete<{ message: string }>(`/workspaces/members/${membershipId}`);
 }
 
-export async function getProjectEligibleMembers(projectPublicId: string | number): Promise<ProjectMembersResponse> {
+export async function getProjectEligibleMembers(projectPublicId: string): Promise<ProjectMembersResponse> {
   return apiGet<ProjectMembersResponse>(`/projects/${projectPublicId}/members`);
 }

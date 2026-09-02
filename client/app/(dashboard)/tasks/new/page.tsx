@@ -75,7 +75,7 @@ export default function GlobalCreateTaskPage() {
         status: data.status,
         priority: data.priority,
         due_date: data.due_date || null,
-        assignee_id:
+        assignee_public_id:
           data.assignee_id && data.assignee_id !== "none"
             ? data.assignee_id
             : null,

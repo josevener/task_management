@@ -34,8 +34,8 @@ export default function EditTaskPage() {
   const { showToast } = useToast();
   const { hasPermission } = useWorkspace();
   const { user } = useAuth();
-  const projectId = Number(params.id);
-  const taskId = Number(params.taskId);
+  const projectId = params.id as string;
+  const taskId = params.taskId as string;
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,11 +46,11 @@ export default function EditTaskPage() {
 
   useEffect(() => {
     async function fetchData() {
-      if (isNaN(projectId) || isNaN(taskId)) return;
+      if (!projectId || !taskId) return;
 
       try {
         const [taskRes, membersRes] = await Promise.all([
-          getTask(projectId, taskId),
+          getTask(taskId),
           getProjectEligibleMembers(projectId),
         ]);
 
@@ -77,9 +77,9 @@ export default function EditTaskPage() {
         status: data.status,
         priority: data.priority,
         due_date: data.due_date || null,
-        assignee_id:
+        assignee_public_id:
           data.assignee_id && data.assignee_id !== "none"
-            ? Number(data.assignee_id)
+            ? data.assignee_id
             : null,
       });
 
