@@ -33,7 +33,7 @@ export function WorkspaceForm({
     name: initialData?.name || "",
     description: initialData?.description || "",
     organization_id: initialData?.organization_id || (organizations.length > 0 ? organizations[0].id.toString() : ""),
-    color_theme: initialData?.color_theme || "#2563eb",
+    color_theme: initialData?.color_theme || "#0f766e",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -47,7 +47,7 @@ export function WorkspaceForm({
     onSubmit(formData);
   };
 
-  const presetColors = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#db2777"];
+  const presetColors = ["#0f766e", "#14b8a6", "#16a34a", "#d97706", "#7c3aed", "#db2777"];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

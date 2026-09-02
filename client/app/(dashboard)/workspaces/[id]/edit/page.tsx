@@ -88,7 +88,7 @@ export default function EditWorkspacePage() {
               name: workspace.name,
               description: workspace.description || '',
               organization_id: String(workspace.organization_id),
-              color_theme: workspace.color_theme || '#2563eb'
+              color_theme: workspace.color_theme || '#0f766e'
             }}
             onSubmit={handleSubmit}
             onCancel={() => router.push("/workspaces")}

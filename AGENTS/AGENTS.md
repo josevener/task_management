@@ -138,7 +138,8 @@ All API responses use JSON. Successful responses have `{ success: true, data: ..
 - Use `public_id` and related `*_public_id` fields in TypeScript types, API wrappers, dynamic route values, links, router navigation, selections, and form/mutation payloads. Do not introduce numeric resource IDs into client state or new browser-facing contracts.
 - The API client sends cookies with `withCredentials: true` and turns responses into `ApiClientError`. Handle errors with clear toast messages; do not expose raw error objects.
 - Keep loading, empty, error, disabled, and submit-pending states usable. Preserve current accessibility conventions: labels for controls, sensible focus behavior, contrast, and keyboard-accessible shadcn primitives.
-- Use the existing Tailwind design language: clean neutral/slate surfaces, indigo primary actions, and Lucide icons. Avoid adding a separate design system or styling library.
+- Use the existing Tailwind design language: clean neutral/slate surfaces, teal primary actions, and Lucide icons. Avoid adding a separate design system or styling library.
+- The application brand palette is teal. Keep primary, focus, selected, and interactive states aligned to the teal tokens in `client/app/globals.css`. Existing `indigo-*` and `blue-*` utility classes are intentionally mapped to the teal palette for backward compatibility; prefer semantic shadcn tokens such as `bg-primary`, `text-primary`, and `ring-ring` in new or substantially revised UI. Preserve an explicitly chosen workspace `color_theme`; use `#0f766e` only as the fallback default.
 
 ## Testing conventions
 

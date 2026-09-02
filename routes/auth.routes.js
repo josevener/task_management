@@ -169,11 +169,11 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h2 style="color: #4f46e5;">Welcome to Zentrix!</h2>
+      <h2 style="color: #0f766e;">Welcome to Zentrix!</h2>
       <p>Hi ${first_name},</p>
       <p>Thank you for signing up. Please click the button below to verify your email address and activate your account:</p>
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify Email Address</a>
+        <a href="${verifyLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Verify Email Address</a>
       </div>
       <p>Or copy and paste this link into your browser:</p>
       <p style="word-break: break-all; color: #64748b; font-size: 14px;">${verifyLink}</p>
@@ -496,11 +496,11 @@ authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h2 style="color: #4f46e5;">New Verification Code</h2>
+      <h2 style="color: #0f766e;">New Verification Code</h2>
       <p>Hi ${user.firstName},</p>
       <p>You requested a new verification code. Please use the following code to activate your Zentrix account:</p>
       <div style="text-align: center; margin: 30px 0;">
-        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0f766e; background-color: #f3f4f6; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0;">${otpCode}</span>
       </div>
       <p style="margin-top: 40px; font-size: 12px; color: #94a3b8;">This code will expire in 10 minutes.</p>
     </div>
@@ -575,12 +575,12 @@ authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h2 style="color: #4f46e5;">Password Reset Request</h2>
+      <h2 style="color: #0f766e;">Password Reset Request</h2>
       <p>Hi ${user.firstName},</p>
       <p>We received a request to reset your password for your Zentrix account. If you didn't request this, you can safely ignore this email.</p>
       <p>To reset your password, click the button below:</p>
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Reset Password</a>
+        <a href="${resetLink}" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Reset Password</a>
       </div>
       <p>Or copy and paste this link into your browser:</p>
       <p style="word-break: break-all; color: #64748b; font-size: 14px;">${resetLink}</p>

@@ -94,7 +94,7 @@ export default function WorkspacesPage() {
               <CardHeader className="flex flex-row items-center gap-4">
                 <div
                   className="flex h-12 w-12 items-center justify-center rounded-md text-white font-bold"
-                  style={{ backgroundColor: workspace.color_theme || '#2563eb' }}
+                  style={{ backgroundColor: workspace.color_theme || '#0f766e' }}
                 >
                   {workspace.name.substring(0, 2).toUpperCase()}
                 </div>

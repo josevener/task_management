@@ -239,7 +239,7 @@ export function Sidebar({ className, onNavigate, isCollapsed = false }: SidebarP
               <div className="flex items-center gap-3">
                 <div
                   className="w-8 h-8 rounded shrink-0 flex items-center justify-center text-white font-bold text-xs"
-                  style={{ backgroundColor: activeWorkspace?.color_theme || '#2563eb' }}
+                  style={{ backgroundColor: activeWorkspace?.color_theme || '#0f766e' }}
                 >
                   {activeWorkspace ? activeWorkspace.name.substring(0, 2).toUpperCase() : <Briefcase size={16} />}
                 </div>
@@ -269,7 +269,7 @@ export function Sidebar({ className, onNavigate, isCollapsed = false }: SidebarP
               >
                 <div
                   className="w-6 h-6 rounded mr-2 flex items-center justify-center text-white font-bold text-[10px]"
-                  style={{ backgroundColor: workspace.color_theme || '#2563eb' }}
+                  style={{ backgroundColor: workspace.color_theme || '#0f766e' }}
                 >
                   {workspace.name.substring(0, 2).toUpperCase()}
                 </div>

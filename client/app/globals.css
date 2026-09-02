@@ -2,6 +2,27 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * Product palette: teal is the application brand color. The indigo and blue
+ * aliases intentionally preserve existing utility-class usage while rendering
+ * a consistent teal interface across legacy and new components.
+ */
+@theme {
+  --color-indigo-50: #f0fdfa;
+  --color-indigo-100: #ccfbf1;
+  --color-indigo-200: #99f6e4;
+  --color-indigo-300: #5eead4;
+  --color-indigo-400: #2dd4bf;
+  --color-indigo-500: #14b8a6;
+  --color-indigo-600: #0d9488;
+  --color-indigo-700: #0f766e;
+  --color-indigo-800: #115e59;
+  --color-indigo-900: #134e4a;
+  --color-indigo-950: #042f2e;
+  --color-blue-600: #0d9488;
+  --color-blue-700: #0f766e;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -52,32 +73,32 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.52 0.12 184);
+  --primary-foreground: oklch(0.985 0.005 180);
+  --secondary: oklch(0.96 0.02 185);
+  --secondary-foreground: oklch(0.28 0.045 185);
+  --muted: oklch(0.96 0.015 185);
+  --muted-foreground: oklch(0.47 0.03 185);
+  --accent: oklch(0.94 0.035 184);
+  --accent-foreground: oklch(0.28 0.055 185);
   --destructive: oklch(0.58 0.22 27);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
+  --ring: oklch(0.62 0.11 184);
+  --chart-1: oklch(0.62 0.11 184);
+  --chart-2: oklch(0.70 0.10 165);
+  --chart-3: oklch(0.54 0.11 202);
+  --chart-4: oklch(0.76 0.12 130);
+  --chart-5: oklch(0.56 0.15 44);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.52 0.12 184);
+  --sidebar-primary-foreground: oklch(0.985 0.005 180);
+  --sidebar-accent: oklch(0.94 0.035 184);
+  --sidebar-accent-foreground: oklch(0.28 0.055 185);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.62 0.11 184);
 }
 
 @layer base {
@@ -146,4 +167,4 @@
 
 .item-slide-hover:hover {
   transform: translateX(3px);
-}
+}
