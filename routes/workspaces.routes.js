@@ -79,6 +79,16 @@ function mapWorkspace(w, currentUserId) {
   };
 }
 
+async function hasDifferentOrganizationMembership(tx, userId, organizationId) {
+  return tx.workspaceMember.findFirst({
+    where: {
+      userId,
+      workspace: { organizationId: { not: organizationId } },
+    },
+    select: { id: true },
+  });
+}
+
 async function canCreateWorkspaceInOrganization(organizationId, userId) {
   const org = await prisma.organization.findUnique({
     where: { id: parseInt(organizationId, 10) },
@@ -96,7 +106,7 @@ async function canCreateWorkspaceInOrganization(organizationId, userId) {
         organizationId: parseInt(organizationId, 10)
       },
       OR: [
-        { role: { equals: 'Admin', mode: 'insensitive' } },
+        { role: 'Admin' },
         {
           roleObj: {
             rolePermissions: {
@@ -527,6 +537,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     select: {
       id: true,
       name: true,
+      organizationId: true,
       roles: {
         where: { name: 'Member' },
         select: { id: true, name: true },
@@ -551,6 +562,10 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
     });
     if (exists > 0) {
       return sendValidationError(res, { email: 'User is already a member of this workspace' });
+    }
+    const otherOrganizationMembership = await hasDifferentOrganizationMembership(prisma, existingUser.id, workspace.organizationId);
+    if (otherOrganizationMembership) {
+      return sendValidationError(res, { email: 'This user already belongs to another organization.' });
     }
   }
 
@@ -580,6 +595,16 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
   let result;
   try {
     result = await runSerializableTransaction(prisma, async (tx) => {
+      const invitee = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (invitee) {
+        const otherOrganizationMembership = await hasDifferentOrganizationMembership(tx, invitee.id, workspace.organizationId);
+        if (otherOrganizationMembership) {
+          const error = new Error('This user already belongs to another organization.');
+          error.validationErrors = { email: error.message };
+          throw error;
+        }
+      }
+
       const existingInvitation = await tx.workspaceInvitation.findUnique({
         where: { unique_workspace_invitation: { workspaceId, email } },
       });
@@ -617,6 +642,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
       return { invitation, status: existingInvitation ? 'resent' : 'sent' };
     });
   } catch (error) {
+    if (error.validationErrors) return sendValidationError(res, error.validationErrors);
     if (error.statusCode) return sendError(res, error.message, error.statusCode);
     if (error.code === 'P2002') {
       return sendError(res, 'Another invitation request was processed at the same time. Please try again.', 409);

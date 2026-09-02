@@ -13,8 +13,7 @@ export async function getWorkspace(id: string): Promise<WorkspaceResponse> {
 }
 
 export interface CreateWorkspaceData {
-  organization_public_id?: string;
-  organization_id?: string | number;
+  organization_public_id: string;
   name: string;
   slug?: string;
   description?: string;

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
+import { useAuth } from "@/contexts/auth-context";
 import {
   getOrganization,
   deleteOrganization
@@ -21,7 +22,8 @@ export default function EditOrganizationPage() {
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
-  const { refreshWorkspaces } = useWorkspace();
+  const { refreshWorkspaces, hasPermission } = useWorkspace();
+  const { user } = useAuth();
   const organizationId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,7 @@ export default function EditOrganizationPage() {
         {orgData && (
           <OrganizationSettings
             organization={orgData}
+            canEdit={hasPermission('organizations:edit') || orgData.owner_id === user?.id}
             onUpdate={(updated) => setOrgData(updated)}
             onDeleteRequest={() => setShowDeleteDialog(true)}
           />

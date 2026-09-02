@@ -24,7 +24,11 @@ export interface Organization {
   logo_url?: string;
   subscription_tier: string;
   subscription_status?: string;
-  owner_id?: string | number;
+  owner_id?: string;
+  timezone?: string;
+  default_language?: string;
+  date_format?: string;
+  time_format?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -192,7 +196,7 @@ export interface PermissionsResponse {
 }
 
 export interface OrganizationMember {
-  id: number;
+  id: string;
   email: string;
   first_name: string;
   last_name: string;

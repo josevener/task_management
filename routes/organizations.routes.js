@@ -5,11 +5,19 @@ const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
 const { createSlug } = require('../utils/slug');
 const { createRoleWithPermissions } = require('../utils/rbac');
+const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { publicIdParam } = require('../utils/public-id');
 
 const organizationsRouter = express.Router();
 organizationsRouter.use(attachCurrentUser, requireAuth);
 organizationsRouter.param('id', publicIdParam(prisma, 'Organization'));
+
+const ORGANIZATION_PREFERENCE_VALUES = Object.freeze({
+  timezone: new Set(['Asia/Ulaanbaatar', 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo']),
+  default_language: new Set(['en']),
+  date_format: new Set(['YYYY-MM-DD', 'MM/DD/YYYY', 'DD/MM/YYYY']),
+  time_format: new Set(['12h', '24h']),
+});
 
 function mapOrganization(org) {
   if (!org) return null;
@@ -20,7 +28,7 @@ function mapOrganization(org) {
     slug: org.slug,
     logo_url: org.logoUrl,
     subscription_tier: org.subscriptionTier,
-    owner_id: undefined,
+    owner_id: org.owner?.publicId || undefined,
     timezone: org.timezone,
     default_language: org.defaultLanguage,
     date_format: org.dateFormat,
@@ -75,7 +83,7 @@ async function canManageOrganization(userId, organizationId) {
         organizationId: parseInt(organizationId, 10)
       },
       OR: [
-        { role: { equals: 'Admin', mode: 'insensitive' } },
+        { role: 'Admin' },
         {
           roleObj: {
             rolePermissions: {
@@ -110,7 +118,8 @@ organizationsRouter.get('/', asyncHandler(async (req, res) => {
     },
     orderBy: {
       createdAt: 'desc'
-    }
+    },
+    include: { owner: { select: { publicId: true } } },
   });
 
   return sendSuccess(res, { organizations: organizations.map(mapOrganization) });
@@ -130,7 +139,8 @@ organizationsRouter.get('/:id', asyncHandler(async (req, res) => {
           }
         }
       }
-    }
+    },
+    include: { owner: { select: { publicId: true } } },
   });
 
   if (!org) {
@@ -159,24 +169,43 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
     return sendValidationError(res, errors);
   }
 
-  const canCreate = await canCreateOrganization(req.currentUser.id);
-  if (!canCreate) {
-    return sendError(res, 'You do not have permission to create organizations', 403);
-  }
-
-  const existing = await prisma.organization.findUnique({
-    where: { slug }
+  const existingMembership = await prisma.workspaceMember.findFirst({
+    where: { userId: req.currentUser.id },
+    select: { id: true },
   });
-  if (existing) {
-    return sendValidationError(res, { slug: 'This slug is already taken' });
+  if (existingMembership) {
+    return sendError(res, 'You already belong to an organization. Each user can belong to only one organization.', 409);
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const canCreate = await canCreateOrganization(req.currentUser.id);
+  if (!canCreate) return sendError(res, 'You do not have permission to create organizations', 403);
+
+  let result;
+  try {
+    result = await runSerializableTransaction(prisma, async (tx) => {
+    const existingMembership = await tx.workspaceMember.findFirst({
+      where: { userId: req.currentUser.id },
+      select: { id: true },
+    });
+    if (existingMembership) {
+      const error = new Error('You already belong to an organization. Each user can belong to only one organization.');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const existing = await tx.organization.findUnique({ where: { slug } });
+    if (existing) {
+      const error = new Error('This slug is already taken');
+      error.validationErrors = { slug: 'This slug is already taken' };
+      throw error;
+    }
+
     const newOrg = await tx.organization.create({
       data: {
         name,
         slug,
         subscriptionTier: req.body.subscription_tier || 'free',
+        defaultLanguage: 'en',
         ownerId: req.currentUser.id
       }
     });
@@ -222,18 +251,25 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
     });
 
     return {
-      organization: newOrg,
+      organization: { ...newOrg, owner: { publicId: req.currentUser.public_id } },
       workspace: {
-        id: newWs.id,
+        id: newWs.publicId,
+        public_id: newWs.publicId,
         name: newWs.name,
         slug: newWs.slug,
-        organization_id: newWs.organizationId,
+        organization_id: newOrg.publicId,
+        organization_public_id: newOrg.publicId,
         color_theme: newWs.colorTheme,
         user_role: 'Admin',
         user_role_id: roleIds['Admin']
       }
     };
-  });
+    });
+  } catch (error) {
+    if (error.validationErrors) return sendValidationError(res, error.validationErrors);
+    if (error.statusCode) return sendError(res, error.message, error.statusCode);
+    throw error;
+  }
 
   return sendSuccess(res, {
     organization: mapOrganization(result.organization),
@@ -277,13 +313,17 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
                     f === 'timeFormat' ? 'time_format' : 
                     f === 'subscriptionStatus' ? 'subscription_status' : f;
     if (Object.prototype.hasOwnProperty.call(req.body, bodyKey)) {
+      if (ORGANIZATION_PREFERENCE_VALUES[bodyKey] && !ORGANIZATION_PREFERENCE_VALUES[bodyKey].has(req.body[bodyKey])) {
+        return sendValidationError(res, { [bodyKey]: 'Select one of the available options' });
+      }
       data[f] = req.body[bodyKey];
     }
   }
 
   const updated = await prisma.organization.update({
     where: { id: parseInt(req.params.id, 10) },
-    data
+    data,
+    include: { owner: { select: { publicId: true } } },
   });
 
   return sendSuccess(res, { organization: mapOrganization(updated) });
@@ -306,7 +346,7 @@ organizationsRouter.get('/:id/members', asyncHandler(async (req, res) => {
       }
     },
     select: {
-      id: true,
+      publicId: true,
       email: true,
       firstName: true,
       lastName: true,
@@ -328,7 +368,7 @@ organizationsRouter.get('/:id/members', asyncHandler(async (req, res) => {
     const roles = u.workspaceMemberships.map(m => m.role);
     const role = roles.includes('Admin') ? 'Admin' : (roles[0] || 'member');
     return {
-      id: u.id,
+      id: u.publicId,
       email: u.email,
       first_name: u.firstName,
       last_name: u.lastName,
@@ -341,10 +381,10 @@ organizationsRouter.get('/:id/members', asyncHandler(async (req, res) => {
 }));
 
 organizationsRouter.post('/:id/transfer-ownership', asyncHandler(async (req, res) => {
-  const { new_owner_id } = req.body;
+  const { new_owner_public_id } = req.body;
   
-  if (!new_owner_id) {
-    return sendValidationError(res, { new_owner_id: 'New owner ID is required' });
+  if (!new_owner_public_id || typeof new_owner_public_id !== 'string') {
+    return sendValidationError(res, { new_owner_public_id: 'New owner public ID is required' });
   }
 
   const org = await prisma.organization.findFirst({
@@ -358,9 +398,12 @@ organizationsRouter.post('/:id/transfer-ownership', asyncHandler(async (req, res
     return sendError(res, 'Only the organization owner can transfer ownership', 403);
   }
 
+  const targetUser = await prisma.user.findUnique({ where: { publicId: new_owner_public_id }, select: { id: true } });
+  if (!targetUser) return sendValidationError(res, { new_owner_public_id: 'New owner was not found' });
+
   const isMember = await prisma.workspaceMember.count({
     where: {
-      userId: parseInt(new_owner_id, 10),
+      userId: targetUser.id,
       workspace: {
         organizationId: parseInt(req.params.id, 10)
       }
@@ -374,7 +417,7 @@ organizationsRouter.post('/:id/transfer-ownership', asyncHandler(async (req, res
   await prisma.organization.update({
     where: { id: parseInt(req.params.id, 10) },
     data: {
-      ownerId: parseInt(new_owner_id, 10)
+      ownerId: targetUser.id
     }
   });
 

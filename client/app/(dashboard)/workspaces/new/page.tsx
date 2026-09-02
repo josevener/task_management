@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { createWorkspace } from "@/lib/api/workspaces";
-import { apiGet } from "@/lib/api-client";
+import { getOrganizations } from "@/lib/api/organizations";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +25,7 @@ export default function NewWorkspacePage() {
   useEffect(() => {
     async function fetchOrganizations() {
       try {
-        const res = await apiGet<{ organizations: Organization[] }>("/organizations");
+        const res = await getOrganizations();
         setOrganizations(res.organizations || []);
       }
       catch (error) {
@@ -45,7 +45,7 @@ export default function NewWorkspacePage() {
       const response = await createWorkspace({
         name: data.name,
         description: data.description,
-        organization_id: parseInt(data.organization_id),
+        organization_public_id: data.organization_id,
         color_theme: data.color_theme,
       });
 

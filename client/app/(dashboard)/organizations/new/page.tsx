@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createOrganization } from "@/lib/api/organizations";
+import { createOrganization, getOrganizations } from "@/lib/api/organizations";
 import { useToast } from "@/lib/toast";
 import { Building2, ArrowLeft } from "lucide-react";
 import { OrganizationForm } from "@/components/forms/OrganizationForm";
@@ -17,6 +17,16 @@ export default function NewOrganizationPage() {
   const { refreshWorkspaces } = useWorkspace();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkingEligibility, setCheckingEligibility] = useState(true);
+
+  useEffect(() => {
+    getOrganizations()
+      .then((response) => {
+        if (response.organizations?.length) router.replace("/organizations");
+      })
+      .catch(() => showToast("Unable to confirm organization setup.", "error"))
+      .finally(() => setCheckingEligibility(false));
+  }, [router, showToast]);
 
   const handleSubmit = async (data: { name: string; slug: string; subscription_tier: string }) => {
     try {
@@ -42,6 +52,8 @@ export default function NewOrganizationPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (checkingEligibility) return <div className="flex h-64 items-center justify-center"><Building2 className="h-8 w-8 animate-pulse text-indigo-600" /></div>;
 
   return (
     <div className="w-full space-y-4">

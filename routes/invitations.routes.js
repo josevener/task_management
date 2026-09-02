@@ -4,13 +4,14 @@ const { prisma } = require('../config/database');
 const { attachCurrentUser, checkPermission } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
+const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { normalizeEmail, hashInvitationToken } = require('../utils/workspace-invitations');
 
 const invitationsRouter = express.Router();
 invitationsRouter.use(attachCurrentUser);
 
 const invitationInclude = {
-  workspace: { select: { id: true, name: true, isActive: true } },
+  workspace: { select: { id: true, name: true, isActive: true, organizationId: true } },
   role: { select: { id: true, name: true, workspaceId: true } },
   invitedBy: { select: { firstName: true, lastName: true, isActive: true } },
 };
@@ -128,7 +129,23 @@ invitationsRouter.post('/:token/accept', asyncHandler(async (req, res) => {
   const passwordHash = existingUser ? null : await bcrypt.hash(password, 10);
 
   try {
-    const accepted = await prisma.$transaction(async (tx) => {
+    const accepted = await runSerializableTransaction(prisma, async (tx) => {
+      let user = await tx.user.findUnique({ where: { email: invitation.email } });
+      if (user) {
+        const otherOrganizationMembership = await tx.workspaceMember.findFirst({
+          where: {
+            userId: user.id,
+            workspace: { organizationId: { not: invitation.workspace.organizationId } },
+          },
+          select: { id: true },
+        });
+        if (otherOrganizationMembership) {
+          const error = new Error('You already belong to another organization. Each user can belong to only one organization.');
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+
       // Claim the invitation first. The conditional update makes concurrent acceptance single-use.
       const claimed = await tx.workspaceInvitation.updateMany({
         where: {
@@ -147,7 +164,6 @@ invitationsRouter.post('/:token/accept', asyncHandler(async (req, res) => {
         throw error;
       }
 
-      let user = await tx.user.findUnique({ where: { email: invitation.email } });
       if (!user) {
         user = await tx.user.create({
           data: {
@@ -196,7 +212,8 @@ invitationsRouter.post('/:token/accept', asyncHandler(async (req, res) => {
 
     return sendSuccess(res, {
       user: {
-        id: accepted.user.id,
+        id: accepted.user.publicId,
+        public_id: accepted.user.publicId,
         email: accepted.user.email,
         first_name: accepted.user.firstName,
         last_name: accepted.user.lastName,

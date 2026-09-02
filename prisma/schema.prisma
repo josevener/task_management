@@ -18,7 +18,7 @@ model Organization {
   updatedAt          DateTime?   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
   ownerId            Int?        @map("owner_id")
   timezone           String?     @db.VarChar(100)
-  defaultLanguage    String?     @map("default_language") @db.VarChar(20)
+  defaultLanguage    String      @default("en") @map("default_language") @db.VarChar(20)
   dateFormat         String?     @map("date_format") @db.VarChar(30)
   timeFormat         String?     @map("time_format") @db.VarChar(30)
   subscriptionStatus String      @default("active") @map("subscription_status") @db.VarChar(50)

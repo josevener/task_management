@@ -59,6 +59,7 @@ test('an authenticated existing user accepts a valid invitation once with the st
             async findUnique() { return existingUser; },
           },
           workspaceMember: {
+            async findFirst() { return null; },
             async findUnique() { return null; },
             async create(args) {
               createdMemberships.push(args.data);
@@ -86,6 +87,36 @@ test('an authenticated existing user accepts a valid invitation once with the st
       roleId: 8,
       role: 'Member',
     });
+  });
+
+  harness.restore();
+});
+
+test('an existing user cannot accept an invitation into a different organization', async () => {
+  let invitationClaimed = false;
+  const existingUser = { id: 25, email: 'invitee@example.com', firstName: 'Existing', lastName: 'User' };
+  const harness = loadRouterApp('routes/invitations.routes.js', 'invitationsRouter', {
+    'config/database.js': {
+      prisma: {
+        workspaceInvitation: { async findUnique() { return invitation({ workspace: { id: 4, name: 'Workspace A', isActive: true, organizationId: 2 } }); } },
+        user: { async findUnique() { return existingUser; } },
+        async $transaction(callback) {
+          return callback({
+            user: { async findUnique() { return existingUser; } },
+            workspaceMember: { async findFirst() { return { id: 7 }; } },
+            workspaceInvitation: { async updateMany() { invitationClaimed = true; return { count: 1 }; } },
+          });
+        },
+      },
+    },
+    'middleware/auth.js': authMock({ id: 25, email: 'invitee@example.com' }),
+  });
+
+  await withTestServer(harness.app, async (requestJson) => {
+    const response = await requestJson(`/${VALID_TOKEN}/accept`, { method: 'POST', body: {} });
+    assert.equal(response.status, 409);
+    assert.match(response.body.error_message, /only one organization/i);
+    assert.equal(invitationClaimed, false);
   });
 
   harness.restore();
@@ -202,6 +233,7 @@ test('a new recipient supplies their own profile and creates an active account a
             },
           },
           workspaceMember: {
+            async findFirst() { return null; },
             async findUnique() { return null; },
             async create(args) {
               createdMemberships.push(args.data);
