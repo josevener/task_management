@@ -37,9 +37,10 @@ test('prisma migration artifacts include seeded RBAC data and an explicit existi
   assert.match(migrationSql, /CREATE TABLE `password_resets`/);
   assert.match(migrationSql, /INSERT INTO `permissions`/);
 
-  assert.equal(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL.length, 2);
-  assert.match(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL[0], /CREATE TABLE IF NOT EXISTS email_otp_verifications/);
-  assert.match(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL[1], /CREATE TABLE IF NOT EXISTS password_resets/);
+  assert.ok(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL.length >= 2);
+  assert.ok(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL.some((statement) => /CREATE TABLE IF NOT EXISTS email_otp_verifications/.test(statement)));
+  assert.ok(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL.some((statement) => /CREATE TABLE IF NOT EXISTS password_resets/.test(statement)));
+  assert.ok(legacyPrepScript.LEGACY_PRISMA_COMPATIBILITY_SQL.some((statement) => /workspace_members.*public_id/i.test(statement)));
 
   assert.match(cutoverDoc, /migrate:prepare-existing/);
   assert.match(cutoverDoc, /migrate:baseline-existing/);

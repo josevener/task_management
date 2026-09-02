@@ -25,6 +25,7 @@ test('session migration supports persistence and expiration cleanup in MariaDB',
       'utf8'
     );
     await connection.query(migrationSql);
+    await connection.query('ALTER TABLE sessions ADD COLUMN public_id VARCHAR(40) NOT NULL, ADD UNIQUE INDEX sessions_public_id_key (public_id)');
 
     const store = new MariaDbSessionStore({
       dbHost: dbConfig.host,

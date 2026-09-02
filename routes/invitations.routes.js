@@ -11,7 +11,7 @@ const invitationsRouter = express.Router();
 invitationsRouter.use(attachCurrentUser);
 
 const invitationInclude = {
-  workspace: { select: { id: true, name: true, isActive: true, organizationId: true } },
+  workspace: { select: { id: true, publicId: true, name: true, isActive: true, organizationId: true } },
   role: { select: { id: true, name: true, workspaceId: true } },
   invitedBy: { select: { firstName: true, lastName: true, isActive: true } },
 };
@@ -50,7 +50,7 @@ async function recordInvitationRejection(invitation, currentUserId) {
         workspaceId: invitation.workspaceId,
         activityType: 'workspace_invitation_rejected',
         description: `Workspace invitation rejected because it is ${status}`,
-        metadata: JSON.stringify({ invitation_id: invitation.id, status }),
+        metadata: JSON.stringify({ invitation_public_id: invitation.publicId, status }),
       },
     });
   } catch (error) {
@@ -73,7 +73,7 @@ invitationsRouter.get('/:token', asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     invitation: {
       email: invitation.email,
-      workspace_id: invitation.workspace.id,
+      workspace_public_id: invitation.workspace.publicId,
       workspace_name: invitation.workspace.name,
       inviter_name: `${invitation.invitedBy.firstName} ${invitation.invitedBy.lastName}`.trim(),
       expires_at: invitation.expiresAt,
@@ -200,7 +200,7 @@ invitationsRouter.post('/:token/accept', asyncHandler(async (req, res) => {
           workspaceId: invitation.workspaceId,
           activityType: 'workspace_invitation_accepted',
           description: `Workspace invitation accepted for ${invitation.email}`,
-          metadata: JSON.stringify({ invitation_id: invitation.id }),
+          metadata: JSON.stringify({ invitation_public_id: invitation.publicId }),
         },
       });
 
@@ -220,8 +220,8 @@ invitationsRouter.post('/:token/accept', asyncHandler(async (req, res) => {
         avatar_url: accepted.user.avatarUrl,
         created_at: accepted.user.createdAt,
       },
-      workspace_id: invitation.workspaceId,
-      membership_id: accepted.membership.id,
+      workspace_public_id: invitation.workspace.publicId,
+      membership_public_id: accepted.membership.publicId,
       message: `Welcome to ${invitation.workspace.name}!`,
     });
   } catch (error) {
@@ -252,7 +252,7 @@ invitationsRouter.delete('/:token', asyncHandler(async (req, res) => {
         workspaceId: invitation.workspaceId,
         activityType: 'workspace_invitation_revoked',
         description: `Workspace invitation revoked for ${invitation.email}`,
-        metadata: JSON.stringify({ invitation_id: invitation.id }),
+        metadata: JSON.stringify({ invitation_public_id: invitation.publicId }),
       },
     });
     return true;

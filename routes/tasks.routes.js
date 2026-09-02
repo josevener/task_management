@@ -746,7 +746,7 @@ tasksRouter.patch('/:id', asyncHandler(async (req, res) => {
   });
 
   const updatedTask = mapTask(updatedTaskDb);
-  updatedTask.tags = await getTaskTags(updatedTask.id);
+  updatedTask.tags = await getTaskTags(updatedTaskDb.id);
 
   return sendSuccess(res, { task: updatedTask });
 }));

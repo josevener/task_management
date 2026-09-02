@@ -57,7 +57,7 @@ test('organization bootstrap provisions permissions for every default role', asy
     'utils/rbac.js': {
       async createRoleWithPermissions(_tx, roleData) {
         createdRoleNames.push(roleData.name);
-        return { id: createdRoleNames.length, ...roleData };
+        return { id: createdRoleNames.length, publicId: `rol_${String(createdRoleNames.length).padStart(32, 'a')}`, ...roleData };
       }
     }
   });
@@ -70,6 +70,8 @@ test('organization bootstrap provisions permissions for every default role', asy
 
     assert.equal(response.status, 201);
     assert.deepEqual(createdRoleNames, ['Admin', 'Manager', 'Member', 'Guest']);
+    assert.equal(response.body.data.workspace.user_role_public_id, 'rol_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1');
+    assert.equal(Object.hasOwn(response.body.data.workspace, 'user_role_id'), false);
   });
 
   routerHarness.restore();
@@ -103,4 +105,27 @@ test('organization creation rejects a user who already belongs to an organizatio
   });
 
   harness.restore();
+});
+
+test('organization settings reject direct subscription changes', async () => {
+  const routerHarness = loadRouterApp('routes/organizations.routes.js', 'organizationsRouter', {
+    'config/database.js': {
+      prisma: {
+        organization: { async findUnique() { return { id: 1, ownerId: 8 }; } },
+        workspaceMember: { async count() { return 0; } },
+      },
+    },
+    'middleware/auth.js': {
+      attachCurrentUser(req, _res, next) { req.currentUser = { id: 8 }; next(); },
+      requireAuth(_req, _res, next) { next(); },
+    },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/org_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', { method: 'PATCH', body: { subscription_tier: 'enterprise' } });
+    assert.equal(response.status, 422);
+    assert.match(response.body.errors.subscription, /managed by billing/i);
+  });
+
+  routerHarness.restore();
 });

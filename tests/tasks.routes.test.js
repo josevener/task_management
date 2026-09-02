@@ -18,9 +18,11 @@ test('task updates use an integer task ID when loading tags', async () => {
             project: { workspaceId: 4, name: 'Project A' }
           };
         },
-        async findUnique() {
+        async findUnique(args) {
+          if (args.where.publicId) return { id: 1 };
           return {
             id: 1,
+            publicId: 'tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             title: 'Updated task',
             projectId: 20,
             parentTaskId: null,
@@ -81,7 +83,7 @@ test('task updates use an integer task ID when loading tags', async () => {
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/1', {
+    const response = await requestJson('/tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { title: 'Updated task' },
     });
@@ -102,6 +104,7 @@ test('task parent updates reject a task from another project', async () => {
         return callback(this);
       },
       task: {
+        async findUnique(args) { if (args.where.publicId) return { id: 1 }; return null; },
         async findFirst(args) {
           if (args.where.projectId) {
             return null;
@@ -137,7 +140,7 @@ test('task parent updates reject a task from another project', async () => {
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/1', {
+    const response = await requestJson('/tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { parent_task_id: 99 },
     });
@@ -157,6 +160,7 @@ test('task parent updates reject circular task hierarchies', async () => {
         return callback(this);
       },
       task: {
+        async findUnique(args) { if (args.where.publicId) return { id: 1 }; return null; },
         async findFirst(args) {
           if (!args.where.projectId) {
             return {
@@ -195,7 +199,7 @@ test('task parent updates reject circular task hierarchies', async () => {
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/1', {
+    const response = await requestJson('/tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { parent_task_id: 99 },
     });
@@ -215,6 +219,7 @@ test('task parent updates reject partially numeric identifiers before opening a 
         transactionStarted = true;
       },
       task: {
+        async findUnique(args) { if (args.where.publicId) return { id: 1 }; return null; },
         async findFirst() {
           return {
             id: 1,
@@ -247,7 +252,7 @@ test('task parent updates reject partially numeric identifiers before opening a 
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/1', {
+    const response = await requestJson('/tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { parent_task_id: '99-invalid' },
     });
@@ -285,6 +290,7 @@ test('task parent updates revalidate hierarchy after a concurrent write conflict
         });
       },
       task: {
+        async findUnique(args) { if (args.where.publicId) return { id: 1 }; return null; },
         async findFirst() {
           return {
             id: 1,
@@ -317,7 +323,7 @@ test('task parent updates revalidate hierarchy after a concurrent write conflict
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/1', {
+    const response = await requestJson('/tsk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { parent_task_id: 99 },
     });

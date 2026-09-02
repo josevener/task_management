@@ -52,7 +52,7 @@ function broadcastToUser(userId, eventType, payload) {
 /**
  * Keep connections alive by sending a ping periodically
  */
-setInterval(() => {
+const heartbeat = setInterval(() => {
   const dataString = `event: ping\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`;
   for (const userClients of clients.values()) {
     userClients.forEach(client => {
@@ -60,6 +60,9 @@ setInterval(() => {
     });
   }
 }, 30000); // 30 seconds
+
+// The timer is a server background concern and must not keep one-shot scripts or tests alive.
+heartbeat.unref();
 
 module.exports = {
   addClient,

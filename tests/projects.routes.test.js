@@ -25,6 +25,9 @@ test('project updates require current workspace membership even for former proje
   const databaseMock = {
     prisma: {
       project: {
+        async findUnique() {
+          return { id: 123 };
+        },
         async findFirst() {
           return null;
         }
@@ -38,7 +41,7 @@ test('project updates require current workspace membership even for former proje
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/123', {
+    const response = await requestJson('/prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PATCH',
       body: { name: 'Renamed project' },
     });

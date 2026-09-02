@@ -8,6 +8,7 @@ const VALID_TOKEN = 'a'.repeat(64);
 function invitation(overrides = {}) {
   return {
     id: 10,
+    publicId: 'win_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     workspaceId: 4,
     email: 'invitee@example.com',
     roleId: 8,
@@ -15,7 +16,7 @@ function invitation(overrides = {}) {
     expiresAt: new Date(Date.now() + 60_000),
     acceptedAt: null,
     revokedAt: null,
-    workspace: { id: 4, name: 'Workspace A', isActive: true },
+    workspace: { id: 4, publicId: 'wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: 'Workspace A', isActive: true },
     role: { id: 8, name: 'Member', workspaceId: 4 },
     invitedBy: { firstName: 'Admin', lastName: 'User', isActive: true },
     ...overrides,
@@ -36,6 +37,7 @@ test('an authenticated existing user accepts a valid invitation once with the st
   const createdMemberships = [];
   const existingUser = {
     id: 25,
+    publicId: 'usr_dddddddddddddddddddddddddddddddd',
     email: 'invitee@example.com',
     firstName: 'Existing',
     lastName: 'User',
@@ -63,7 +65,7 @@ test('an authenticated existing user accepts a valid invitation once with the st
             async findUnique() { return null; },
             async create(args) {
               createdMemberships.push(args.data);
-              return { id: 99, ...args.data };
+      return { id: 99, publicId: 'wmb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ...args.data };
             },
           },
           activityLog: { async create() { return {}; } },
@@ -80,7 +82,8 @@ test('an authenticated existing user accepts a valid invitation once with the st
   await withTestServer(harness.app, async (requestJson) => {
     const response = await requestJson(`/${VALID_TOKEN}/accept`, { method: 'POST', body: {} });
     assert.equal(response.status, 200);
-    assert.equal(response.body.data.workspace_id, 4);
+    assert.equal(response.body.data.workspace_public_id, 'wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.equal(response.body.data.membership_public_id, 'wmb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
     assert.deepEqual(createdMemberships[0], {
       workspaceId: 4,
       userId: 25,
@@ -154,6 +157,7 @@ test('an expired invitation is rejected without starting a transaction', async (
 
 test('an inactive inviter makes the invitation unavailable without starting a transaction', async () => {
   let transactionStarted = false;
+  let rejectionActivity;
   const databaseMock = {
     prisma: {
       workspaceInvitation: {
@@ -161,7 +165,7 @@ test('an inactive inviter makes the invitation unavailable without starting a tr
           return invitation({ invitedBy: { firstName: 'Former', lastName: 'Admin', isActive: false } });
         },
       },
-      activityLog: { async create() { return {}; } },
+      activityLog: { async create(args) { rejectionActivity = args.data; return {}; } },
       async $transaction() {
         transactionStarted = true;
       },
@@ -178,6 +182,7 @@ test('an inactive inviter makes the invitation unavailable without starting a tr
     assert.equal(response.status, 409);
     assert.match(response.body.error_message, /can no longer be accepted/i);
     assert.equal(transactionStarted, false);
+    assert.equal(rejectionActivity.metadata, JSON.stringify({ invitation_public_id: 'win_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'invalid' }));
   });
 
   harness.restore();
@@ -229,7 +234,7 @@ test('a new recipient supplies their own profile and creates an active account a
             async findUnique() { return null; },
             async create(args) {
               createdUsers.push(args.data);
-              return { id: 44, avatarUrl: null, createdAt: new Date(), ...args.data };
+              return { id: 44, publicId: 'usr_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', avatarUrl: null, createdAt: new Date(), ...args.data };
             },
           },
           workspaceMember: {
@@ -237,7 +242,7 @@ test('a new recipient supplies their own profile and creates an active account a
             async findUnique() { return null; },
             async create(args) {
               createdMemberships.push(args.data);
-              return { id: 101, ...args.data };
+              return { id: 101, publicId: 'wmb_cccccccccccccccccccccccccccccccc', ...args.data };
             },
           },
           activityLog: { async create() { return {}; } },

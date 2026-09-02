@@ -230,6 +230,7 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
     ];
 
     const roleIds = {};
+    const rolePublicIds = {};
     for (const roleDef of defaultRoles) {
       const newRole = await createRoleWithPermissions(tx, {
         workspaceId: newWs.id,
@@ -238,6 +239,7 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
         isSystemRole: roleDef.isSystemRole
       });
       roleIds[roleDef.name] = newRole.id;
+      rolePublicIds[roleDef.name] = newRole.publicId;
     }
 
     // Add the creator as the initial Admin member.
@@ -261,7 +263,7 @@ organizationsRouter.post('/', asyncHandler(async (req, res) => {
         organization_public_id: newOrg.publicId,
         color_theme: newWs.colorTheme,
         user_role: 'Admin',
-        user_role_id: roleIds['Admin']
+        user_role_public_id: rolePublicIds['Admin']
       }
     };
     });
@@ -281,6 +283,10 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
   const canManage = await canManageOrganization(req.currentUser.id, req.params.id);
   if (!canManage) {
     return sendError(res, 'Organization not found or you do not have permission to edit it', 404);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'subscription_tier') || Object.prototype.hasOwnProperty.call(req.body, 'subscription_status')) {
+    return sendValidationError(res, { subscription: 'Subscription tier and status are managed by billing and cannot be changed here' });
   }
 
   const data = {};
@@ -304,14 +310,13 @@ organizationsRouter.patch('/:id', asyncHandler(async (req, res) => {
     data.slug = slugVal;
   }
 
-  const fields = ['subscriptionTier', 'logoUrl', 'timezone', 'defaultLanguage', 'dateFormat', 'timeFormat', 'subscriptionStatus'];
+  // Subscription state is managed by billing, not general organization settings.
+  const fields = ['logoUrl', 'timezone', 'defaultLanguage', 'dateFormat', 'timeFormat'];
   for (const f of fields) {
-    const bodyKey = f === 'subscriptionTier' ? 'subscription_tier' : 
-                    f === 'logoUrl' ? 'logo_url' : 
+    const bodyKey = f === 'logoUrl' ? 'logo_url' :
                     f === 'defaultLanguage' ? 'default_language' : 
                     f === 'dateFormat' ? 'date_format' : 
-                    f === 'timeFormat' ? 'time_format' : 
-                    f === 'subscriptionStatus' ? 'subscription_status' : f;
+                    f === 'timeFormat' ? 'time_format' : f;
     if (Object.prototype.hasOwnProperty.call(req.body, bodyKey)) {
       if (ORGANIZATION_PREFERENCE_VALUES[bodyKey] && !ORGANIZATION_PREFERENCE_VALUES[bodyKey].has(req.body[bodyKey])) {
         return sendValidationError(res, { [bodyKey]: 'Select one of the available options' });

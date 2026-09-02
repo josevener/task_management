@@ -93,3 +93,97 @@ test('role deletion rejects a fallback role from another workspace', async () =>
 
   routerHarness.restore();
 });
+
+test('role creation repeats its permission check inside the serializable transaction', async () => {
+  let roleCreated = false;
+  const databaseMock = {
+    prisma: {
+      workspace: { async findUnique() { return { id: 4 }; } },
+      workspaceMember: {
+        async count() { return 1; },
+      },
+      async $transaction(callback, options) {
+        assert.equal(options.isolationLevel, 'Serializable');
+        return callback({
+          workspaceMember: { async count() { return 0; } },
+          role: {
+            async findFirst() { return null; },
+            async create() { roleCreated = true; },
+          },
+        });
+      },
+    },
+  };
+
+  const routerHarness = loadRouterApp('routes/roles.routes.js', 'rolesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': authMock,
+    'utils/rbac-notifications.js': { async createRbacNotification() { throw new Error('must not notify a rejected change'); }, broadcastRbacNotification() {} },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson('/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles', {
+      method: 'POST', body: { name: 'Contributor' },
+    });
+    assert.equal(response.status, 403);
+    assert.match(response.body.error_message, /permission to create roles/i);
+    assert.equal(roleCreated, false);
+  });
+
+  routerHarness.restore();
+});
+
+test('role deletion synchronizes the denormalized member role during fallback reassignment', async () => {
+  const memberUpdates = [];
+  const targetRoleId = 'rol_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const fallbackRoleId = 'rol_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const databaseMock = {
+    prisma: {
+      workspace: { async findUnique() { return { id: 4 }; } },
+      workspaceMember: {
+        async count() { return 1; },
+        async findFirst() { return { roleObj: { name: 'Admin', isSystemRole: true, rolePermissions: [] } }; },
+      },
+      role: {
+        async findUnique(args) { return { id: args.where.publicId === targetRoleId ? 2 : 3 }; },
+        async findFirst(args) {
+          if (args.where.id === 2) return { id: 2, publicId: targetRoleId, workspaceId: 4, name: 'Legacy role', isSystemRole: false, workspace: { publicId: 'wsp_cccccccccccccccccccccccccccccccc' }, _count: { members: 1 } };
+          return { id: 3, name: 'Member', rolePermissions: [{ permission: { action: 'roles:delete' } }] };
+        },
+      },
+      async $transaction(callback) {
+        return callback({
+          workspaceMember: {
+            async count() { return 1; },
+            async findFirst() { return { roleObj: { name: 'Admin', isSystemRole: true, rolePermissions: [] } }; },
+            async updateMany(args) { memberUpdates.push(args); return { count: 1 }; },
+          },
+          role: {
+            async findFirst(args) {
+              if (args.where.id === 2) return { id: 2, publicId: targetRoleId, _count: { members: 1 } };
+              return { id: 3, name: 'Member', rolePermissions: [{ permission: { action: 'roles:delete' } }] };
+            },
+            async delete() { return {}; },
+          },
+          activityLog: { async create() { return {}; } },
+        });
+      },
+    },
+  };
+
+  const routerHarness = loadRouterApp('routes/roles.routes.js', 'rolesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': authMock,
+    'utils/rbac-notifications.js': { async createRbacNotification() { return { userId: 8, payload: {} }; }, broadcastRbacNotification() {} },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson(`/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles/${targetRoleId}`, {
+      method: 'DELETE', body: { fallback_role_public_id: fallbackRoleId },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(memberUpdates[0].data, { roleId: 3, role: 'Member' });
+  });
+
+  routerHarness.restore();
+});

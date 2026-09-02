@@ -29,7 +29,7 @@ test('workspace creation is denied when the user lacks create permission in the 
           return 1; // has access to the organization
         },
         async findUnique() {
-          return { ownerId: 99 }; // not the owner
+          return { id: 3, ownerId: 99 }; // not the owner
         }
       },
       workspaceMember: {
@@ -50,7 +50,7 @@ test('workspace creation is denied when the user lacks create permission in the 
     const response = await requestJson('/', {
       method: 'POST',
       body: {
-        organization_id: 3,
+        organization_public_id: 'org_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         name: 'Ops Workspace',
       },
     });
@@ -68,6 +68,7 @@ test('member updates reject global profile changes from the workspace screen', a
       workspaceMember: {
         async findUnique() {
           return {
+            id: 22,
             workspaceId: 9,
             userId: 15,
             roleObj: { name: 'Member', isSystemRole: false }
@@ -84,7 +85,7 @@ test('member updates reject global profile changes from the workspace screen', a
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/members/22', {
+    const response = await requestJson('/members/wmb_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PUT',
       body: {
         first_name: 'Changed',
@@ -103,14 +104,24 @@ test('member updates reject a role from another workspace', async () => {
     prisma: {
       workspaceMember: {
         async findUnique() {
-          return { workspaceId: 9, userId: 15, roleObj: { name: 'Member' } };
+          return { id: 22, workspaceId: 9, userId: 15, roleObj: { name: 'Member' } };
         }
       },
       role: {
+        async findUnique() { return { id: 99 }; },
         async findFirst() {
           return null;
         }
-      }
+      },
+      async $transaction(callback) {
+        return callback({
+          workspaceMember: {
+            async findUnique() { return { id: 22, workspaceId: 9, userId: 15, roleObj: { name: 'Member' } }; },
+            async findFirst() { return { roleObj: { rolePermissions: [{ permission: { action: 'members:manage_roles' } }] } }; },
+          },
+          role: { async findFirst() { return null; } },
+        });
+      },
     }
   };
 
@@ -121,13 +132,74 @@ test('member updates reject a role from another workspace', async () => {
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/members/22', {
+    const response = await requestJson('/members/wmb_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'PUT',
-      body: { role_id: 99 },
+      body: { role_public_id: 'rol_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
     });
 
     assert.equal(response.status, 422);
-    assert.equal(response.body.errors.role_id, 'The selected role does not belong to this workspace');
+    assert.equal(response.body.errors.role_public_id, 'The selected role does not belong to this workspace');
+  });
+
+  routerHarness.restore();
+});
+
+test('member role assignment rechecks policy and writes its audit record inside a serializable transaction', async () => {
+  const writes = [];
+  const workspaceMemberId = 'wmb_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const rolePublicId = 'rol_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const transaction = {
+    workspaceMember: {
+      async findUnique() {
+        return { id: 22, publicId: workspaceMemberId, workspaceId: 9, userId: 15, workspace: { publicId: 'wsp_cccccccccccccccccccccccccccccccc' }, roleObj: { name: 'Member', isSystemRole: false } };
+      },
+      async findFirst() {
+        return { roleObj: { name: 'Admin', isSystemRole: true, rolePermissions: [{ permission: { action: 'members:manage_roles' } }, { permission: { action: 'projects:view' } }] } };
+      },
+      async update(args) { writes.push({ type: 'member', args }); return {}; },
+      async count() { return 1; },
+    },
+    role: {
+      async findFirst() {
+        return { id: 44, publicId: rolePublicId, name: 'Contributor', isSystemRole: false, rolePermissions: [{ permission: { action: 'projects:view' } }] };
+      },
+    },
+    activityLog: { async create(args) { writes.push({ type: 'activity', args }); return {}; } },
+    notification: {
+      async create(args) {
+        writes.push({ type: 'notification', args });
+        return { publicId: 'ntf_dddddddddddddddddddddddddddddddd', isRead: false, createdAt: new Date(), ...args.data };
+      },
+    },
+  };
+  const databaseMock = {
+    prisma: {
+      workspaceMember: { async findUnique() { return { id: 22 }; } },
+      role: { async findUnique() { return { id: 44 }; } },
+      async $transaction(callback, options) {
+        assert.equal(options.isolationLevel, 'Serializable');
+        return callback(transaction);
+      },
+    },
+  };
+  const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
+    'config/database.js': databaseMock,
+    'middleware/auth.js': createWorkspaceAuthMock(async () => false),
+    'utils/mailer.js': { async sendMail() { return true; } },
+  });
+
+  await withTestServer(routerHarness.app, async (requestJson) => {
+    const response = await requestJson(`/members/${workspaceMemberId}`, { method: 'PUT', body: { role_public_id: rolePublicId } });
+    assert.equal(response.status, 200);
+    assert.deepEqual(writes.map((write) => write.type), ['member', 'activity', 'notification']);
+    assert.equal(writes[1].args.data.metadata, JSON.stringify({ membership_public_id: workspaceMemberId, role_public_id: rolePublicId }));
+    assert.deepEqual(writes[2].args.data, {
+      userId: 15,
+      type: 'workspace_member_role_updated',
+      title: 'Workspace role updated',
+      message: 'Your workspace role is now Contributor.',
+      relatedWorkspaceId: 9,
+    });
   });
 
   routerHarness.restore();
@@ -152,12 +224,14 @@ test('member invitations use the workspace Member role and ignore client-control
         async count() { return 0; },
       },
       workspace: {
+        async findUnique() { return { id: 4 }; },
         async findFirst() {
           return { id: 4, name: 'Workspace A', roles: [{ id: 8, name: 'Member' }] };
         }
       },
       async $transaction(callback) {
         return callback({
+          user: { async findUnique() { return null; } },
           workspaceInvitation: {
             async findUnique() {
               return null;
@@ -180,7 +254,7 @@ test('member invitations use the workspace Member role and ignore client-control
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/4/members', {
+    const response = await requestJson('/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/members', {
       method: 'POST',
       body: { email: 'invitee@example.com', role: '99' },
     });
@@ -199,13 +273,13 @@ test('member invitations use the workspace Member role and ignore client-control
 
 test('member invitations require the workspace invite permission', async () => {
   const routerHarness = loadRouterApp('routes/workspaces.routes.js', 'workspacesRouter', {
-    'config/database.js': { prisma: {} },
+    'config/database.js': { prisma: { workspace: { async findUnique() { return { id: 4 }; } } } },
     'middleware/auth.js': createWorkspaceAuthMock(async () => false),
     'utils/mailer.js': { async sendMail() { return true; } },
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/4/members', {
+    const response = await requestJson('/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/members', {
       method: 'POST',
       body: { email: 'invitee@example.com' },
     });
@@ -221,6 +295,7 @@ test('member invitations repair a missing default Member role for a legacy works
   const createdRoles = [];
   const createdInvitations = [];
   const tx = {
+    user: { async findUnique() { return null; } },
     role: {
       async findFirst() { return null; },
       async create(args) {
@@ -247,6 +322,7 @@ test('member invitations repair a missing default Member role for a legacy works
   const databaseMock = {
     prisma: {
       workspace: {
+        async findUnique() { return { id: 4 }; },
         async findFirst() {
           return { id: 4, name: 'Legacy Workspace', roles: [] };
         },
@@ -268,7 +344,7 @@ test('member invitations repair a missing default Member role for a legacy works
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/4/members', {
+    const response = await requestJson('/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/members', {
       method: 'POST',
       body: { email: 'legacy-invitee@example.com' },
     });
@@ -287,6 +363,7 @@ test('delivery failure revokes the committed invitation and returns a retryable 
   const writes = [];
   const transactionMocks = [
     {
+      user: { async findUnique() { return null; } },
       workspaceInvitation: {
         async findUnique() { return null; },
         async create(args) { return { id: 71, ...args.data }; },
@@ -305,7 +382,7 @@ test('delivery failure revokes the committed invitation and returns a retryable 
       user: { async findUnique() { return null; } },
       workspaceMember: { async count() { return 0; } },
       workspaceInvitation: { async count() { return 0; } },
-      workspace: { async findFirst() { return { id: 4, name: 'Workspace A', roles: [{ id: 8, name: 'Member' }] }; } },
+      workspace: { async findUnique() { return { id: 4 }; }, async findFirst() { return { id: 4, name: 'Workspace A', roles: [{ id: 8, name: 'Member' }] }; } },
       async $transaction(callback) { return callback(transactionMocks.shift()); },
     },
   };
@@ -316,7 +393,7 @@ test('delivery failure revokes the committed invitation and returns a retryable 
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/4/members', { method: 'POST', body: { email: 'invitee@example.com' } });
+    const response = await requestJson('/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/members', { method: 'POST', body: { email: 'invitee@example.com' } });
     assert.equal(response.status, 503);
     assert.match(response.body.error_message, /could not be delivered/i);
     assert.equal(writes.length, 1);
@@ -329,6 +406,7 @@ test('delivery failure revokes the committed invitation and returns a retryable 
 test('concurrent invitation writes retry a serialization conflict instead of returning a unique constraint error', async () => {
   let attempts = 0;
   const tx = {
+    user: { async findUnique() { return null; } },
     workspaceInvitation: {
       async findUnique() { return null; },
       async create(args) { return { id: 72, ...args.data }; },
@@ -340,7 +418,7 @@ test('concurrent invitation writes retry a serialization conflict instead of ret
       user: { async findUnique() { return null; } },
       workspaceMember: { async count() { return 0; } },
       workspaceInvitation: { async count() { return 0; } },
-      workspace: { async findFirst() { return { id: 4, name: 'Workspace A', roles: [{ id: 8, name: 'Member' }] }; } },
+      workspace: { async findUnique() { return { id: 4 }; }, async findFirst() { return { id: 4, name: 'Workspace A', roles: [{ id: 8, name: 'Member' }] }; } },
       async $transaction(callback, options) {
         attempts += 1;
         assert.equal(options.isolationLevel, 'Serializable');
@@ -356,7 +434,7 @@ test('concurrent invitation writes retry a serialization conflict instead of ret
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/4/members', { method: 'POST', body: { email: 'invitee@example.com' } });
+    const response = await requestJson('/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/members', { method: 'POST', body: { email: 'invitee@example.com' } });
     assert.equal(response.status, 201);
     assert.equal(attempts, 2);
   });
@@ -372,6 +450,7 @@ test('removing a workspace member also clears their project memberships in that 
       workspaceMember: {
         async findUnique() {
           return {
+            id: 50,
             workspaceId: 4,
             userId: 25,
             roleObj: { name: 'Member', isSystemRole: false }
@@ -405,7 +484,7 @@ test('removing a workspace member also clears their project memberships in that 
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/members/50', {
+    const response = await requestJson('/members/wmb_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
       method: 'DELETE',
     });
 

@@ -10,6 +10,7 @@ const { createRoleWithPermissions } = require('../utils/rbac');
 const { runSerializableTransaction } = require('../utils/serializable-transaction');
 const { publicIdParam, resolveInternalId } = require('../utils/public-id');
 const { getActorRolePolicy, canGrantPermissionActions } = require('../utils/role-policy');
+const { createRbacNotification, broadcastRbacNotification } = require('../utils/rbac-notifications');
 const {
   normalizeEmail,
   createInvitationToken,
@@ -76,7 +77,7 @@ function mapWorkspace(w, currentUserId) {
     date_format: w.organization?.dateFormat || null,
     time_format: w.organization?.timeFormat || null,
     user_role: userMember.roleObj?.name || userMember.role || 'member',
-    user_role_id: userMember.roleObj?.publicId || null
+    user_role_public_id: userMember.roleObj?.publicId || null
   };
 }
 
@@ -312,6 +313,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
     ];
 
     const roleIds = {};
+    const rolePublicIds = {};
     for (const rDef of defaultRoles) {
       const newRole = await createRoleWithPermissions(tx, {
         workspaceId: newWs.id,
@@ -320,6 +322,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
         isSystemRole: rDef.isSystemRole
       });
       roleIds[rDef.name] = newRole.id;
+      rolePublicIds[rDef.name] = newRole.publicId;
     }
 
     // 2. Add user as Admin member
@@ -353,7 +356,7 @@ workspacesRouter.post('/', asyncHandler(async (req, res) => {
       updated_at: fullWs.updatedAt,
       organization_name: fullWs.organization.name,
       user_role: 'Admin',
-      user_role_id: roleIds['Admin']
+      user_role_public_id: rolePublicIds['Admin']
     };
   });
 
@@ -416,12 +419,15 @@ workspacesRouter.patch('/:id', asyncHandler(async (req, res) => {
 
   const updated = await prisma.workspace.update({
     where: { id: parseInt(req.params.id, 10) },
-    data
+    data,
+    include: { organization: { select: { publicId: true } } },
   });
 
   const mappedWorkspace = {
-    id: updated.id,
-    organization_id: updated.organizationId,
+    id: updated.publicId,
+    public_id: updated.publicId,
+    organization_id: updated.organization.publicId,
+    organization_public_id: updated.organization.publicId,
     name: updated.name,
     slug: updated.slug,
     description: updated.description,
@@ -636,7 +642,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           workspaceId,
           activityType: existingInvitation ? 'workspace_invitation_resent' : 'workspace_invitation_requested',
           description: `Workspace invitation ${existingInvitation ? 'resent' : 'requested'} for ${email}`,
-          metadata: JSON.stringify({ invitation_id: invitation.id }),
+          metadata: JSON.stringify({ invitation_public_id: invitation.publicId }),
         },
       });
 
@@ -672,7 +678,7 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
           workspaceId,
           activityType: 'workspace_invitation_delivery_failed',
           description: `Workspace invitation delivery failed for ${email}`,
-          metadata: JSON.stringify({ invitation_id: result.invitation.id, provider_error_category: error?.code || 'smtp_error' }),
+          metadata: JSON.stringify({ invitation_public_id: result.invitation.publicId, provider_error_category: error?.code || 'smtp_error' }),
         },
       });
     });
@@ -692,71 +698,53 @@ workspacesRouter.post('/:workspaceId/members', asyncHandler(async (req, res) => 
 
 workspacesRouter.put('/members/:membershipId', asyncHandler(async (req, res) => {
   const { role_public_id, first_name, last_name, email } = req.body;
+  if (first_name || last_name || email) return sendValidationError(res, { profile: 'Profile updates must be managed from the user account settings.' });
+  if (!role_public_id) return sendSuccess(res, { message: 'Member details updated successfully' });
 
-  const targetMember = await prisma.workspaceMember.findUnique({
-    where: { id: parseInt(req.params.membershipId, 10) },
-    include: { roleObj: true }
-  });
+  const roleId = await resolveInternalId(prisma, 'Role', role_public_id, 'role_public_id');
+  let notificationEvent;
+  try {
+    await runSerializableTransaction(prisma, async (tx) => {
+      const targetMember = await tx.workspaceMember.findUnique({
+        where: { id: parseInt(req.params.membershipId, 10) },
+        include: { roleObj: true, workspace: { select: { publicId: true } } }
+      });
+      if (!targetMember) { const error = new Error('Membership not found'); error.statusCode = 404; throw error; }
 
-  if (!targetMember) {
-    return sendError(res, 'Membership not found', 404);
-  }
+      const actorPolicy = await getActorRolePolicy(tx, targetMember.workspaceId, req.currentUser.id);
+      if (!actorPolicy.actions.has('members:manage_roles')) { const error = new Error('You do not have permission to edit member details in this workspace'); error.statusCode = 403; throw error; }
 
-  const canManageRoles = await checkPermission(targetMember.workspaceId, req.currentUser.id, 'members:manage_roles');
-  if (!canManageRoles) {
-    return sendError(res, 'You do not have permission to edit member details in this workspace', 403);
-  }
+      const newRole = await tx.role.findFirst({
+        where: { id: roleId || -1, workspaceId: targetMember.workspaceId },
+        include: { rolePermissions: { include: { permission: { select: { action: true } } } } }
+      });
+      if (!newRole) { const error = new Error('The selected role does not belong to this workspace'); error.validationErrors = { role_public_id: error.message }; throw error; }
+      if (!canGrantPermissionActions(actorPolicy, newRole.rolePermissions.map(({ permission }) => permission.action))) { const error = new Error('You cannot assign a role with permissions you do not hold'); error.validationErrors = { role_public_id: error.message }; throw error; }
 
-  const errors = {};
-
-  if (role_public_id) {
-    const roleId = await resolveInternalId(prisma, 'Role', role_public_id, 'role_public_id');
-    const newRole = await prisma.role.findFirst({
-      where: {
-        id: roleId || -1,
-        workspaceId: targetMember.workspaceId
-      },
-      include: { rolePermissions: { include: { permission: { select: { action: true } } } } }
-    });
-
-    if (!newRole) {
-      errors.role_public_id = 'The selected role does not belong to this workspace';
-    } else {
-      const actorPolicy = await getActorRolePolicy(prisma, targetMember.workspaceId, req.currentUser.id);
-      if (!canGrantPermissionActions(actorPolicy, newRole.rolePermissions.map(({ permission }) => permission.action))) {
-        errors.role_public_id = 'You cannot assign a role with permissions you do not hold';
-      } else if (targetMember.roleObj?.name === 'Admin' && newRole.name !== 'Admin') {
-        const otherAdminsCount = await prisma.workspaceMember.count({
-          where: {
-            workspaceId: targetMember.workspaceId,
-            roleObj: { name: 'Admin' },
-            userId: { not: targetMember.userId }
-          }
-        });
-
-        if (otherAdminsCount === 0) {
-          errors.role_public_id = 'Cannot demote the last administrator. Promote someone else first.';
-        }
+      if (targetMember.roleObj?.name === 'Admin' && targetMember.roleObj?.isSystemRole && !(newRole.name === 'Admin' && newRole.isSystemRole)) {
+        const otherAdminsCount = await tx.workspaceMember.count({ where: { workspaceId: targetMember.workspaceId, roleObj: { name: 'Admin', isSystemRole: true }, id: { not: targetMember.id } } });
+        if (otherAdminsCount === 0) { const error = new Error('Cannot demote the last administrator. Promote someone else first.'); error.validationErrors = { role_public_id: error.message }; throw error; }
       }
-    }
-  }
 
-  if (first_name || last_name || email) {
-    errors.profile = 'Profile updates must be managed from the user account settings.';
-  }
-
-  if (Object.keys(errors).length > 0) {
-    return sendValidationError(res, errors);
-  }
-
-  if (role_public_id) {
-    const roleId = await resolveInternalId(prisma, 'Role', role_public_id, 'role_public_id');
-    await prisma.workspaceMember.update({
-      where: { id: parseInt(req.params.membershipId, 10) },
-      data: { roleId }
+      await tx.workspaceMember.update({ where: { id: targetMember.id }, data: { roleId: newRole.id, role: newRole.name } });
+      await tx.activityLog.create({ data: { userId: req.currentUser.id, workspaceId: targetMember.workspaceId, activityType: 'workspace_member_role_updated', description: 'Workspace member role updated', metadata: JSON.stringify({ membership_public_id: targetMember.publicId, role_public_id }) } });
+      notificationEvent = await createRbacNotification(tx, {
+        userId: targetMember.userId,
+        workspaceId: targetMember.workspaceId,
+        workspacePublicId: targetMember.workspace.publicId,
+        rolePublicId: newRole.publicId,
+        membershipPublicId: targetMember.publicId,
+        type: 'workspace_member_role_updated',
+        title: 'Workspace role updated',
+        message: `Your workspace role is now ${newRole.name}.`,
+      });
     });
+  } catch (error) {
+    if (error.validationErrors) return sendValidationError(res, error.validationErrors);
+    if (error.statusCode) return sendError(res, error.message, error.statusCode);
+    throw error;
   }
-
+  broadcastRbacNotification(notificationEvent);
   return sendSuccess(res, { message: 'Member details updated successfully' });
 }));
 

@@ -13,7 +13,7 @@ import { useToast } from "@/lib/toast";
 
 interface InvitationDetails {
   email: string;
-  workspace_id: number;
+  workspace_public_id: string;
   workspace_name: string;
   inviter_name: string;
   expires_at: string;
@@ -26,7 +26,8 @@ interface InvitationResponse {
 }
 
 interface AcceptInvitationResponse {
-  workspace_id: number;
+  workspace_public_id: string;
+  membership_public_id: string;
   message: string;
 }
 
@@ -107,7 +108,7 @@ function InvitationAcceptForm() {
       await refreshUser();
       showToast(response.message, "success");
       // The dashboard provider restores this persisted workspace after navigation.
-      localStorage.setItem("activeWorkspaceId", response.workspace_id.toString());
+      localStorage.setItem("activeWorkspaceId", response.workspace_public_id);
       router.push("/dashboard");
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 401 && error.errors?.requires_auth) {
