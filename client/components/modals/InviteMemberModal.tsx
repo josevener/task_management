@@ -17,7 +17,7 @@ import { UserPlus } from "lucide-react";
 interface InviteMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
-  workspaceId: string | number;
+  workspaceId: string;
   onSuccess?: () => void;
 }
 

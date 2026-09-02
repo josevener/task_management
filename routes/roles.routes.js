@@ -3,9 +3,13 @@ const { prisma } = require('../config/database');
 const { attachCurrentUser, requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
 const { sendError, sendSuccess, sendValidationError } = require('../utils/responses');
+const { publicIdParam } = require('../utils/public-id');
 
 const rolesRouter = express.Router();
 rolesRouter.use(attachCurrentUser, requireAuth);
+// Browser-facing workspace identifiers are opaque public IDs. Resolve them once
+// at the route boundary so all authorization and data queries stay internal.
+rolesRouter.param('workspaceId', publicIdParam(prisma, 'Workspace'));
 
 async function hasRolePermission(workspaceId, userId, actions) {
   const requestedActions = Array.isArray(actions) ? actions : [actions];

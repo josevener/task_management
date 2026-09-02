@@ -25,6 +25,11 @@ test('role list requires explicit role view permission', async () => {
         async count() {
           return 0; // Mock count to 0 (user has no permission)
         }
+      },
+      workspace: {
+        async findUnique() {
+          return { id: 2 };
+        }
       }
     }
   };
@@ -35,7 +40,7 @@ test('role list requires explicit role view permission', async () => {
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/workspaces/2/roles');
+    const response = await requestJson('/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles');
 
     assert.equal(response.status, 403);
     assert.equal(response.body.error_message, 'You do not have permission to view roles');
@@ -50,6 +55,11 @@ test('role deletion rejects a fallback role from another workspace', async () =>
       workspaceMember: {
         async count() {
           return 1;
+        }
+      },
+      workspace: {
+        async findUnique() {
+          return { id: 4 };
         }
       },
       role: {
@@ -69,7 +79,7 @@ test('role deletion rejects a fallback role from another workspace', async () =>
   });
 
   await withTestServer(routerHarness.app, async (requestJson) => {
-    const response = await requestJson('/workspaces/4/roles/2', {
+    const response = await requestJson('/workspaces/wsp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/roles/2', {
       method: 'DELETE',
       body: { fallback_role_id: 99 },
     });

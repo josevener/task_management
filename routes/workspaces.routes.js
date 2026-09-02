@@ -482,7 +482,7 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
     },
     include: {
       user: {
-        select: { id: true, firstName: true, lastName: true, email: true }
+        select: { publicId: true, firstName: true, lastName: true, email: true }
       },
       roleObj: {
         select: { name: true }
@@ -494,10 +494,10 @@ workspacesRouter.get('/:workspaceId/members', asyncHandler(async (req, res) => {
   });
 
   const mappedMembers = members.map(m => ({
-    membership_id: m.id,
+    membership_id: m.publicId,
     role: m.roleObj?.name || m.role || 'member',
     created_at: m.createdAt,
-    user_id: m.user.id,
+    user_id: m.user.publicId,
     first_name: m.user.firstName,
     last_name: m.user.lastName,
     email: m.user.email

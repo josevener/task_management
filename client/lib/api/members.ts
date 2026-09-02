@@ -1,8 +1,8 @@
 import { apiGet, apiPost, apiPut, apiDelete } from '../api-client';
 
 export interface WorkspaceMember {
-  membership_id?: number;
-  user_id: number;
+  membership_id?: string;
+  user_id: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -39,22 +39,22 @@ export interface ProjectMembersResponse {
   members: ProjectMember[];
 }
 
-export async function getWorkspaceMembers(workspacePublicId: string | number): Promise<WorkspaceMembersResponse> {
+export async function getWorkspaceMembers(workspacePublicId: string): Promise<WorkspaceMembersResponse> {
   return apiGet<WorkspaceMembersResponse>(`/workspaces/${workspacePublicId}/members`);
 }
 
 export async function addWorkspaceMember(
-  workspacePublicId: string | number,
+  workspacePublicId: string,
   email: string
 ): Promise<WorkspaceInvitationResponse> {
   return apiPost<WorkspaceInvitationResponse>(`/workspaces/${workspacePublicId}/members`, { email });
 }
 
-export async function updateWorkspaceMember(membershipId: number, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
+export async function updateWorkspaceMember(membershipId: string, data: { role_id?: number; first_name?: string; last_name?: string; email?: string }): Promise<{ message: string }> {
   return apiPut<{ message: string }>(`/workspaces/members/${membershipId}`, data);
 }
 
-export async function removeWorkspaceMember(membershipId: number): Promise<{ message: string }> {
+export async function removeWorkspaceMember(membershipId: string): Promise<{ message: string }> {
   return apiDelete<{ message: string }>(`/workspaces/members/${membershipId}`);
 }
 
